@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Leave Management | Brillar</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .sticky-col { position: sticky; background: white; }
+    .left-0 { left: 0; }
+    .right-0 { right: 0; }
+    .z-10 { z-index: 10; }
+    .overflow-x-auto { overflow-x: scroll !important; scrollbar-width: auto; scrollbar-color: #cbd5e1 #f1f5f9; }
+    .overflow-x-auto::-webkit-scrollbar { height: 10px; background: #f1f5f9; }
+    .overflow-x-auto::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    #empDrawer.show #drawerPanel { transform: translateX(0) !important; }
+    #drawerPanel { transform: translateX(100%); }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+  <!-- Login Modal -->
+  <div id="loginPage" class="flex items-center justify-center min-h-screen bg-gradient-to-br from-sky-50 via-white to-sky-100">
+    <div class="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 flex flex-col items-center gap-6">
+      <img src="logo.png" alt="Brillar Logo" class="w-32 mb-2 mx-auto" style="filter: drop-shadow(0 2px 8px rgba(0,0,0,0.08));">
+      <h2 class="text-2xl font-bold text-gray-800 tracking-tight mb-2">Brillar Leave Management Portal</h2>
+      <form id="loginForm" class="w-full flex flex-col gap-4">
+        <div>
+          <label class="block text-gray-700 font-semibold mb-1" for="loginEmail">Email</label>
+          <input id="loginEmail" name="email" type="email" required placeholder="your.email@brillar.io"
+            class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-300 focus:border-cyan-400 transition outline-none"/>
+        </div>
+        <div>
+          <label class="block text-gray-700 font-semibold mb-1" for="loginPassword">Password</label>
+          <input id="loginPassword" name="password" type="password" required placeholder="Enter password"
+            class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-300 focus:border-cyan-400 transition outline-none"/>
+        </div>
+        <button type="submit" class="w-full mt-2 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-cyan-600 hover:from-cyan-500 hover:to-cyan-700 text-white font-bold shadow-lg text-lg tracking-wide transition">
+          Sign In
+        </button>
+        <div id="loginError" class="hidden text-red-600 mt-2 text-center"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App Section -->
+  <div id="mainApp" class="hidden">
+    <header class="bg-gray-800 text-white flex items-center px-6 py-4">
+      <img src="https://static.wixstatic.com/media/34647d_4924e46631c3463abed06f9e3147eba3~mv2.png"
+           class="h-10 mr-4" alt="Brillar Logo">
+      <h1 class="text-xl font-semibold">Leave Management</h1>
+      <button onclick="logout()" class="ml-auto bg-gray-400 text-white px-4 py-1 rounded hidden" id="logoutBtn">Logout</button>
+    </header>
+    <nav class="flex border-b bg-white">
+      <button id="tabPortal"
+              class="flex-1 py-3 font-semibold bg-gray-200 hover:bg-gray-300 transition">
+        Leave Portal
+      </button>
+      <button id="tabManage"
+              class="flex-1 py-3 font-semibold hover:bg-gray-300 transition">
+        Employee Management
+      </button>
+      <!-- NEW: Manager Leave Applications tab (hidden for non-managers, toggled in JS) -->
+      <button id="tabManagerApps"
+              class="flex-1 py-3 font-semibold hover:bg-gray-300 transition hidden">
+        Leave Applications
+      </button>
+    </nav>
+    <div class="container mx-auto my-6 px-2 sm:px-4">
+
+      <!-- Leave Portal Panel -->
+      <div id="portalPanel" class="mb-8 bg-white shadow-lg rounded-2xl p-6 transition-all">
+        <!-- ... unchanged ... -->
+        <div class="flex flex-col md:flex-row gap-6 items-end md:items-center mb-6">
+          <div class="w-full md:w-1/2" id="empDropdownContainer">
+            <label for="employeeSelect" class="block font-semibold text-gray-700 mb-2">Select Employee</label>
+            <select id="employeeSelect" class="w-full px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition"></select>
+          </div>
+          <div class="w-full md:w-1/2">
+            <div class="font-semibold text-gray-700 mb-2">Current Leave Balance</div>
+            <div id="balanceDisplay" class="flex flex-row gap-4 p-3 bg-gradient-to-r from-blue-50 to-orange-50 rounded-lg shadow-sm border border-gray-100 items-center">
+              <span class="flex items-center gap-1 text-lg font-semibold text-green-600"><span>🌴</span> <span>Annual:</span> <span id="balAnnual">-</span> d</span>
+              <span class="flex items-center gap-1 text-lg font-semibold text-yellow-600"><span>🏖️</span> <span>Casual:</span> <span id="balCasual">-</span> d</span>
+              <span class="flex items-center gap-1 text-lg font-semibold text-pink-600"><span>🏥</span> <span>Medical:</span> <span id="balMedical">-</span> d</span>
+            </div>
+          </div>
+        </div>
+        <!-- ... unchanged ... -->
+        <div class="bg-gray-50 rounded-xl shadow-inner p-6 mb-8 border border-gray-100">
+          <div class="text-lg font-semibold text-gray-800 mb-4">Apply for Leave</div>
+          <form id="applyForm" class="flex flex-col md:flex-row md:items-end gap-4">
+            <div class="flex-1">
+              <label for="type" class="block text-gray-600 mb-1">Leave Type</label>
+              <select name="type" id="type" class="w-full px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition"></select>
+            </div>
+            <div>
+              <label for="from" class="block text-gray-600 mb-1">From</label>
+              <input type="date" id="from" class="px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition" required>
+            </div>
+            <div>
+              <label for="to" class="block text-gray-600 mb-1">To</label>
+              <input type="date" id="to" class="px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition" required>
+            </div>
+            <button type="submit" class="bg-gradient-to-r from-orange-400 to-orange-600 text-white px-8 py-2 rounded-lg shadow hover:scale-105 transition font-semibold">Apply</button>
+          </form>
+        </div>
+        <div id="reasonModal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 hidden">
+          <div class="bg-white rounded-xl p-8 w-full max-w-md shadow-lg relative">
+            <button type="button" id="modalCloseBtn" class="absolute right-4 top-4 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+            <div class="text-lg font-semibold mb-2">Reason for Leave</div>
+            <form id="reasonForm">
+              <textarea id="reasonInput" class="w-full border border-gray-300 p-3 rounded-lg min-h-[100px] focus:ring-2 focus:ring-orange-400 transition" placeholder="Enter your reason..." required></textarea>
+              <div class="flex justify-end mt-4">
+                <button type="submit" class="bg-gradient-to-r from-orange-400 to-orange-600 text-white px-6 py-2 rounded-lg shadow hover:scale-105 transition font-semibold">Submit</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div>
+          <div class="font-semibold text-gray-700 text-lg mb-3">Previous Leave Applications</div>
+          <div id="prevLeaves" class="flex flex-wrap gap-4"></div>
+        </div>
+      </div>
+
+      <!-- Employee Management Panel -->
+      <div id="managePanel" class="hidden bg-white shadow-lg rounded-2xl p-6">
+        <h2 class="font-semibold text-xl mb-6 flex items-center">
+          <svg class="h-8 w-8 text-blue-400 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5.121 17.804A7 7 0 1117 11a6.993 6.993 0 01-1.121 3.804M12 21v-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Manage Employees
+        </h2>
+        <div class="mb-4 flex items-center">
+          <div class="inline-flex items-center rounded-lg bg-green-50 px-4 py-2 border border-green-200">
+            <svg class="h-6 w-6 text-green-500 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5.121 17.804A7 7 0 1117 11a6.993 6.993 0 01-1.121 3.804M12 21v-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="font-bold text-green-700 text-lg mr-1" id="activeCountNum">0</span>
+            <span class="text-green-700">Active Employees</span>
+          </div>
+          <button id="addEmployeeBtn" class="ml-auto bg-blue-600 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-700 transition">
+            + Add Employee
+          </button>
+        </div>
+        <div class="overflow-x-auto mb-6" style="overflow-x:auto; min-height:40px;">
+          <table id="empTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
+            <thead id="empTableHead" class="bg-gray-100 border-b text-left"></thead>
+            <tbody id="empTableBody"></tbody>
+          </table>
+        </div>
+        <div id="empDrawer" class="fixed inset-0 z-40 bg-black bg-opacity-30 hidden">
+          <div class="absolute top-0 right-0 h-full w-full max-w-md bg-white shadow-lg transition-transform duration-300 translate-x-full"
+               id="drawerPanel" tabindex="-1">
+            <div class="flex justify-between items-center px-6 py-4 border-b">
+              <h3 id="drawerTitle" class="text-lg font-semibold">Add Employee</h3>
+              <button id="drawerCloseBtn" class="text-gray-600 hover:text-gray-900 text-xl font-bold">&times;</button>
+            </div>
+            <form id="empDrawerForm" class="p-6 space-y-4 overflow-y-auto max-h-[80vh]">
+              <div id="drawerFields"></div>
+              <div class="flex space-x-2 mt-4">
+                <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
+                  Save
+                </button>
+                <button type="button" id="drawerCancelBtn" class="bg-gray-400 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= MANAGER LEAVE APPLICATIONS PANEL ================= -->
+      <div id="managerAppsPanel" class="hidden bg-white shadow-lg rounded-2xl p-6">
+        <h2 class="font-semibold text-xl mb-6 flex items-center">
+          <svg class="h-8 w-8 text-orange-400 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 9V7a5 5 0 00-10 0v2a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2z"/></svg>
+          Pending Leave Applications
+        </h2>
+        <div id="managerAppsList" class="space-y-4">
+          <!-- Leave applications list renders here -->
+        </div>
+        <!-- ================= NEW: Upcoming Approved Leaves Section ================= -->
+        <h2 class="font-semibold text-lg mt-10 mb-2 flex items-center">
+          <svg class="h-7 w-7 text-green-500 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
+          Upcoming Approved Leaves (Next 1 Month)
+        </h2>
+        <div id="managerUpcomingList" class="space-y-4">
+          <!-- Approved upcoming leaves will be rendered here by JS -->
+        </div>
+        <!-- ================= END NEW SECTION ================= -->
+      </div>
+      <!-- ================= END MANAGER PANEL ================= -->
+
+    </div>
+  </div>
+  <script src="index.js"></script>
+</body>
+</html>

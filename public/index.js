@@ -1,0 +1,621 @@
+// public/index.js
+
+let currentUser = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!localStorage.getItem('brillar_token')) {
+    document.getElementById('loginPage').classList.remove('hidden');
+    document.getElementById('logoutBtn').classList.add('hidden');
+    document.getElementById('mainApp').classList.add('hidden');
+  } else {
+    document.getElementById('loginPage').classList.add('hidden');
+    document.getElementById('logoutBtn').classList.remove('hidden');
+    document.getElementById('mainApp').classList.remove('hidden');
+    try {
+      currentUser = JSON.parse(localStorage.getItem('brillar_user'));
+    } catch {}
+    toggleTabsByRole();
+    init();
+  }
+});
+
+// Login form logic
+document.getElementById('loginForm').onsubmit = async function(ev) {
+  ev.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  try {
+    const res = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (!res.ok) throw new Error('Login failed');
+    const data = await res.json();
+    localStorage.setItem('brillar_token', data.token);
+    currentUser = data.user;
+    localStorage.setItem('brillar_user', JSON.stringify(currentUser));
+    document.getElementById('loginPage').classList.add('hidden');
+    document.getElementById('logoutBtn').classList.remove('hidden');
+    document.getElementById('mainApp').classList.remove('hidden');
+    toggleTabsByRole();
+    init();
+  } catch (e) {
+    document.getElementById('loginError').textContent = 'Invalid email or password';
+    document.getElementById('loginError').classList.remove('hidden');
+  }
+};
+
+// Logout logic
+function logout() {
+  localStorage.removeItem('brillar_token');
+  localStorage.removeItem('brillar_user');
+  document.getElementById('loginPage').classList.remove('hidden');
+  document.getElementById('logoutBtn').classList.add('hidden');
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('tabManage').classList.add('hidden');
+  document.getElementById('tabManagerApps').classList.add('hidden');
+  location.reload();
+}
+window.logout = logout;
+
+const API = window.location.origin;
+
+// Tab switching logic
+function showPanel(name) {
+  const portalBtn   = document.getElementById('tabPortal');
+  const manageBtn   = document.getElementById('tabManage');
+  const managerBtn  = document.getElementById('tabManagerApps');
+  const portalPanel = document.getElementById('portalPanel');
+  const managePanel = document.getElementById('managePanel');
+  const managerPanel = document.getElementById('managerAppsPanel');
+
+  [portalBtn, manageBtn, managerBtn].forEach(btn => btn && btn.classList.remove('bg-gray-200'));
+
+  portalPanel.classList.add('hidden');
+  managePanel.classList.add('hidden');
+  managerPanel.classList.add('hidden');
+
+  if (name === 'portal') {
+    portalPanel.classList.remove('hidden');
+    portalBtn.classList.add('bg-gray-200');
+  }
+  if (name === 'manage') {
+    managePanel.classList.remove('hidden');
+    manageBtn.classList.add('bg-gray-200');
+  }
+  if (name === 'managerApps') {
+    managerPanel.classList.remove('hidden');
+    managerBtn.classList.add('bg-gray-200');
+    loadManagerApplications();
+  }
+}
+
+// Role-based tab display
+function toggleTabsByRole() {
+  if (currentUser && currentUser.role === 'manager') {
+    document.getElementById('tabManage').classList.remove('hidden');
+    document.getElementById('tabManagerApps').classList.remove('hidden');
+  } else {
+    document.getElementById('tabManage').classList.add('hidden');
+    document.getElementById('tabManagerApps').classList.add('hidden');
+  }
+}
+
+let pendingApply = null;
+let editId = null;
+let drawerEditId = null;
+
+async function init() {
+  document.getElementById('employeeSelect').addEventListener('change', onEmployeeChange);
+  document.getElementById('applyForm').addEventListener('submit', onApplySubmit);
+  document.getElementById('modalCloseBtn').onclick = closeReasonModal;
+  document.getElementById('reasonForm').onsubmit = onReasonSubmit;
+
+  document.getElementById('tabPortal').onclick = () => showPanel('portal');
+  document.getElementById('tabManage').onclick = () => showPanel('manage');
+  const managerTab = document.getElementById('tabManagerApps');
+  if (managerTab) managerTab.onclick = () => showPanel('managerApps');
+  showPanel('portal');
+
+  document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
+
+  document.getElementById('addEmployeeBtn').onclick = async () => {
+    const fields = await getDynamicEmployeeFields();
+    openEmpDrawer({title: 'Add Employee', fields});
+  };
+  document.getElementById('drawerCancelBtn').onclick = closeEmpDrawer;
+  document.getElementById('drawerCloseBtn').onclick = closeEmpDrawer;
+  document.getElementById('empDrawerForm').onsubmit = onEmpDrawerSubmit;
+
+  const empCancelBtn = document.getElementById('empCancelBtn');
+  if (empCancelBtn) empCancelBtn.onclick = onEmpCancel;
+  const empForm = document.getElementById('empForm');
+  if (empForm) empForm.onsubmit = onEmpFormSubmit;
+
+  await loadEmployeesPortal();
+  await loadEmployeesManage();
+  await onEmployeeChange();
+}
+
+// ----------- LEAVE PORTAL & REPORTS -----------
+async function getJSON(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+async function loadEmployeesPortal() {
+  const emps = await getJSON('/employees');
+  let filteredEmps = emps;
+  if (currentUser && currentUser.role !== 'manager') {
+    filteredEmps = emps.filter(e => e.id == currentUser.employeeId);
+  }
+  ['employeeSelect', 'reportSelect'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- choose --</option>';
+    filteredEmps.forEach(e => sel.add(new Option(e.name, e.id)));
+  });
+  if (filteredEmps.length === 1) {
+    document.getElementById('employeeSelect').value = filteredEmps[0].id;
+    document.getElementById('employeeSelect').dispatchEvent(new Event('change'));
+    document.getElementById('reportSelect').value = filteredEmps[0].id;
+    document.getElementById('reportSelect').dispatchEvent(new Event('change'));
+  }
+}
+
+async function onEmployeeChange() {
+  const empId = document.getElementById('employeeSelect').value;
+  const balAnnual = document.getElementById('balAnnual');
+  const balCasual = document.getElementById('balCasual');
+  const balMedical = document.getElementById('balMedical');
+  const typeSel = document.getElementById('type');
+  if (!empId) {
+    balAnnual.textContent = balCasual.textContent = balMedical.textContent = '-';
+    typeSel.innerHTML = '<option value="">-- select leave type --</option>';
+    document.getElementById('prevLeaves').innerHTML = '';
+    return;
+  }
+  const [emps, apps] = await Promise.all([
+    getJSON('/employees'),
+    getJSON(`/applications?employeeId=${empId}`)
+  ]);
+  const emp = emps.find(e => e.id == empId);
+  if (!emp) return;
+  const taken = apps.reduce((acc, app) => {
+    const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    acc[app.type] = (acc[app.type] || 0) + days;
+    return acc;
+  }, {});
+  const remain = {
+    annual:  emp.leaveBalances.annual  - (taken.annual  || 0),
+    casual:  emp.leaveBalances.casual  - (taken.casual  || 0),
+    medical: emp.leaveBalances.medical - (taken.medical || 0)
+  };
+  balAnnual.textContent = remain.annual;
+  balCasual.textContent = remain.casual;
+  balMedical.textContent = remain.medical;
+  typeSel.innerHTML = `
+    <option value="annual">Annual (${remain.annual} days)</option>
+    <option value="casual">Casual (${remain.casual} days)</option>
+    <option value="medical">Medical (${remain.medical} days)</option>
+  `;
+  renderPreviousLeaves(apps, emp);
+}
+
+// ----------- LEAVE APPLICATION SUBMISSION -----------
+function onApplySubmit(ev) {
+  ev.preventDefault();
+  const empId = document.getElementById('employeeSelect').value;
+  const type = document.getElementById('type').value;
+  const from = document.getElementById('from').value;
+  const to = document.getElementById('to').value;
+  if (!empId || !type || !from || !to) {
+    alert('Fill all fields!');
+    return;
+  }
+  pendingApply = { employeeId: +empId, type, from, to };
+  openReasonModal();
+}
+function openReasonModal() {
+  document.getElementById('reasonInput').value = '';
+  document.getElementById('reasonModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('reasonInput').focus(), 100);
+}
+function closeReasonModal() {
+  document.getElementById('reasonModal').classList.add('hidden');
+  pendingApply = null;
+}
+async function onReasonSubmit(ev) {
+  ev.preventDefault();
+  const reason = document.getElementById('reasonInput').value.trim();
+  if (!pendingApply || !reason) return;
+  const payload = { ...pendingApply, reason };
+  const res = await fetch(API + '/applications', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (res.ok) {
+    alert('Leave applied.');
+    document.getElementById('applyForm').reset();
+    closeReasonModal();
+    await onEmployeeChange();
+  } else {
+    alert('Error applying leave.');
+  }
+  pendingApply = null;
+}
+
+function renderPreviousLeaves(apps, emp) {
+  const container = document.getElementById('prevLeaves');
+  if (!apps.length) {
+    container.innerHTML = '<div class="text-gray-500 italic">No leave applications yet.</div>';
+    return;
+  }
+  const typeIcon = { annual: '🌴', casual: '🏖️', medical: '🏥' };
+  container.innerHTML = apps.sort((a,b)=>new Date(b.from)-new Date(a.from)).map(app => {
+    const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    return `
+      <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 w-64">
+        <div class="flex items-center gap-2 mb-2 font-semibold">
+          <span class="text-lg">${typeIcon[app.type]||''}</span>
+          <span>${capitalize(app.type)} Leave</span>
+        </div>
+        <div class="mb-1 text-gray-700"><b>From:</b> ${app.from}</div>
+        <div class="mb-1 text-gray-700"><b>To:</b> ${app.to}</div>
+        <div class="mb-1 text-gray-700"><b>Days:</b> ${days}</div>
+        <div class="mb-1 text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
+        <div class="mt-2">
+          <span class="text-xs rounded px-2 py-1 ${app.status==='pending'?'bg-yellow-100 text-yellow-800':app.status==='rejected'?'bg-red-100 text-red-800':'bg-green-100 text-green-800'}">
+            ${capitalize(app.status||'pending')}
+          </span>
+          ${app.approvedBy ? `<span class="ml-2 text-xs text-gray-500">By: ${app.approvedBy}</span>` : ''}
+          ${app.approverRemark ? `<span class="ml-2 text-xs italic text-gray-600">Remark: ${app.approverRemark}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+function capitalize(str) {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+// ========== MANAGER LEAVE APPLICATIONS TAB LOGIC ==========
+
+// Utility for capitalizing leave type
+function capitalize(str) {
+  if (!str) return '';
+  return str[0].toUpperCase() + str.slice(1);
+}
+
+// --- Approve/Reject handlers ---
+window.approveApp = async function (id, isApprove) {
+  const action = isApprove ? 'approve' : 'reject';
+  const remark = document.getElementById(`remark-${id}`)?.value || '';
+  try {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    const res = await fetch(`/applications/${id}/${action}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        approver: currentUser ? currentUser.email : '',
+        remark: remark
+      })
+    });
+    if (!res.ok) throw new Error('Update failed');
+    toast('Leave ' + (isApprove ? 'approved' : 'rejected') + '!', 'success');
+    await loadManagerApplications();
+  } catch (err) {
+    toast('Error updating leave.', 'error');
+  }
+};
+
+async function loadManagerApplications() {
+  // Get all pending applications
+  const apps = await getJSON('/applications?status=pending');
+  const emps = await getJSON('/employees');
+  const list = document.getElementById('managerAppsList');
+  if (!apps.length) {
+    list.innerHTML = `<div class="text-gray-500 italic">No pending leave applications.</div>`;
+  } else {
+    list.innerHTML = apps.map(app => {
+      const emp = emps.find(e => e.id == app.employeeId);
+      const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+      return `
+        <div class="bg-gray-50 border rounded-lg shadow p-4 flex flex-col md:flex-row md:items-center gap-4">
+          <div class="flex-1">
+            <div class="flex items-center font-semibold mb-1">
+              <span class="text-orange-500 mr-2">📝</span>
+              <span>${emp ? emp.name : 'Unknown'}</span>
+              <span class="ml-3 px-2 rounded text-xs bg-blue-100 text-blue-700">${capitalize(app.type)} Leave</span>
+            </div>
+            <div class="text-sm mb-1 text-gray-700"><b>From:</b> ${app.from} <b>To:</b> ${app.to} <b>Days:</b> ${days}</div>
+            <div class="text-sm mb-1 text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <textarea id="remark-${app.id}" placeholder="Optional remark…" class="border rounded p-1 text-sm min-w-[150px]"></textarea>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 bg-green-500 text-white rounded" onclick="approveApp(${app.id}, true)">Approve</button>
+              <button class="px-3 py-1 bg-red-500 text-white rounded" onclick="approveApp(${app.id}, false)">Reject</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // === NEW: Upcoming Approved Leaves (next 1 month) ===
+  await loadManagerUpcomingLeaves();
+}
+
+// New function to show upcoming approved leaves
+async function loadManagerUpcomingLeaves() {
+  const list = document.getElementById('managerUpcomingList');
+  if (!list) return;
+  const allApproved = await getJSON('/applications?status=approved');
+  const emps = await getJSON('/employees');
+  const now = new Date();
+  const oneMonthLater = new Date();
+  oneMonthLater.setMonth(now.getMonth() + 1);
+
+  // Show approved leave that overlaps with next 1 month
+  const filtered = allApproved.filter(app => {
+    // Show only future or ongoing leave (start or end in next 1 month)
+    const from = new Date(app.from);
+    const to = new Date(app.to);
+    return (
+      (from >= now && from <= oneMonthLater) ||
+      (to >= now && to <= oneMonthLater) ||
+      (from <= now && to >= now) // ongoing leave
+    );
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = `<div class="text-gray-500 italic">No upcoming approved leaves in the next 1 month.</div>`;
+    return;
+  }
+
+  const typeIcon = { annual: '🌴', casual: '🏖️', medical: '🏥' };
+
+  list.innerHTML = filtered.sort((a, b) => new Date(a.from) - new Date(b.from)).map(app => {
+    const emp = emps.find(e => e.id == app.employeeId);
+    const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    return `
+      <div class="bg-white border border-green-100 rounded-lg shadow-sm p-4 w-full flex flex-col md:flex-row md:items-center gap-2">
+        <div class="flex-1">
+          <div class="flex items-center gap-2 font-semibold mb-1">
+            <span class="text-green-600">${typeIcon[app.type]||''}</span>
+            <span>${capitalize(app.type)} Leave</span>
+            <span class="ml-2 px-2 rounded text-xs bg-green-100 text-green-700">Approved</span>
+          </div>
+          <div class="text-gray-700"><b>Name:</b> ${emp ? emp.name : 'Unknown'}</div>
+          <div class="text-gray-700"><b>From:</b> ${app.from}</div>
+          <div class="text-gray-700"><b>To:</b> ${app.to}</div>
+          <div class="text-gray-700"><b>Days:</b> ${days}</div>
+          <div class="text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
+        </div>
+        <div class="flex flex-col gap-1 min-w-[160px]">
+          <span class="text-xs text-gray-500">By: ${app.approvedBy||'-'}</span>
+          ${app.approverRemark ? `<span class="text-xs italic text-gray-600">Remark: ${app.approverRemark}</span>` : ''}
+          <span class="text-xs text-gray-400">${app.approvedAt ? `Approved At: ${app.approvedAt.substring(0,10)}` : ''}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Expose for inline HTML
+window.approveApp = async function(id, approve) {
+  const remark = document.getElementById(`remark-${id}`).value;
+  const res = await fetch(`/applications/${id}/${approve?'approve':'reject'}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({
+      approver: currentUser ? currentUser.email : '',
+      remark: remark || ''
+    })
+  });
+  if (res.ok) {
+    alert(approve ? 'Leave approved.' : 'Leave rejected.');
+    await loadManagerApplications();
+  } else {
+    alert('Error updating leave.');
+  }
+};
+
+// ======== EMPLOYEE MANAGEMENT LOGIC ========
+
+async function loadEmployeesManage() {
+  const emps = await getJSON('/employees');
+  const activeCount = emps.filter(e => {
+    const statusKey = Object.keys(e).find(k => k.toLowerCase() === 'status');
+    return e[statusKey] === 'active';
+  }).length;
+  const countNumElem = document.getElementById('activeCountNum');
+  if (countNumElem) countNumElem.textContent = activeCount;
+
+  const head = document.getElementById('empTableHead');
+  const body = document.getElementById('empTableBody');
+  head.innerHTML = '';
+  body.innerHTML = '';
+  if (!emps.length) {
+    head.innerHTML = '<tr><th class="px-4 py-2">No data</th></tr>';
+    return;
+  }
+
+  let nameKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'name');
+  let statusKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'status');
+  // Exclude id, name, status, leaveBalances, no from dynamic keys
+  let keys = Object.keys(emps[0]).filter(
+    k =>
+      k !== 'id' &&
+      k.toLowerCase() !== 'name' &&
+      k.toLowerCase() !== 'status' &&
+      k.toLowerCase() !== 'leavebalances' &&
+      k.toLowerCase() !== 'no'
+  );
+
+  // Table header
+  head.innerHTML = '<tr>' +
+    `<th class="sticky-col no-col px-4 py-2 font-medium bg-gray-50">No</th>` +             // No col (sticky)
+    `<th class="sticky-col name-col px-4 py-2 font-medium bg-gray-50">Name</th>` +         // Name col (sticky)
+    `<th class="px-4 py-2 font-medium bg-gray-50">Status</th>` +
+    keys.map(k => `<th class="px-4 py-2 font-medium bg-gray-50">${k.charAt(0).toUpperCase() + k.slice(1)}</th>`).join('') +
+    `<th class="sticky-col actions-col px-4 py-2 font-medium bg-gray-50">Actions</th>` +   // Actions (sticky right)
+    '</tr>';
+
+  emps.forEach((emp, idx) => {
+    body.innerHTML += `<tr>
+      <td class="sticky-col no-col px-4 py-2 bg-white">${idx + 1}</td>
+      <td class="sticky-col name-col px-4 py-2 bg-white">${emp[nameKey] ?? ''}</td>
+      <td class="px-4 py-2">
+        <span class="inline-block rounded-full px-3 py-1 text-xs font-bold 
+          ${emp[statusKey] === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+          ${emp[statusKey]}
+        </span>
+      </td>
+      ${keys.map(k => `<td class="px-4 py-2">${typeof emp[k] === 'object' ? JSON.stringify(emp[k]) : (emp[k] ?? '')}</td>`).join('')}
+      <td class="sticky-col actions-col px-4 py-2 bg-white">
+        <button onclick="openEditEmployee('${emp.id}')" class="mr-2 underline text-blue-600">Edit</button>
+        <button data-action="toggle" data-id="${emp.id}" class="mr-2 underline text-${emp[statusKey]==='active'?'red':'green'}-600">
+          ${emp[statusKey] === 'active' ? 'Deactivate' : 'Activate'}
+        </button>
+        <button data-action="delete" data-id="${emp.id}" class="underline text-red-600">Delete</button>
+      </td>
+    </tr>`;
+  });
+}
+
+// Called when edit button is clicked
+window.openEditEmployee = async function(empId) {
+  const emps = await getJSON('/employees');
+  const emp = emps.find(e => e.id == empId);
+  const fields = await getDynamicEmployeeFields();
+  openEmpDrawer({title: 'Edit Employee', fields, initial: emp});
+};
+
+// Table actions (toggle, delete)
+async function onEmpTableClick(e) {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const { action, id } = btn.dataset;
+
+  if (action === 'toggle') {
+    const emp = (await getJSON('/employees')).find(x => x.id == id);
+    const status = (emp.status === 'active' ? 'inactive' : 'active');
+    await fetch(API + `/employees/${id}/status`, {
+      method:  'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body:    JSON.stringify({ status })
+    });
+  }
+  if (action === 'delete') {
+    if (confirm('Are you sure you want to delete this employee?')) {
+      await fetch(API + `/employees/${id}`, {
+        method: 'DELETE'
+      });
+    }
+  }
+  await loadEmployeesManage();
+  await loadEmployeesPortal();
+}
+
+// ---- Drawer logic ----
+function openEmpDrawer({title, fields, initial={}}) {
+  drawerEditId = initial.id || null;
+  document.getElementById('drawerTitle').textContent = title;
+  const fieldHtml = fields.map(f => {
+    const val = initial[f.key] ?? '';
+    if (f.type === 'select') {
+      return `<label class="block mb-1">${f.label}
+        <select name="${f.key}" class="w-full p-2 border rounded mb-2">${f.options.map(opt => `
+          <option value="${opt}" ${val === opt ? 'selected':''}>${opt}</option>
+        `).join('')}</select>
+      </label>`;
+    }
+    return `<label class="block mb-1">${f.label}
+      <input name="${f.key}" class="w-full p-2 border rounded mb-2" value="${val}" ${f.type ? `type="${f.type}"` : ''} ${f.required ? 'required' : ''}>
+    </label>`;
+  }).join('');
+  document.getElementById('drawerFields').innerHTML = fieldHtml;
+  document.getElementById('empDrawer').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('empDrawer').classList.add('show'),10);
+  setTimeout(()=>document.getElementById('drawerPanel').focus(),100);
+}
+function closeEmpDrawer() {
+  document.getElementById('empDrawer').classList.remove('show');
+  setTimeout(()=>document.getElementById('empDrawer').classList.add('hidden'), 300);
+}
+
+// Drawer submit
+async function onEmpDrawerSubmit(ev) {
+  ev.preventDefault();
+  const data = {};
+  new FormData(ev.target).forEach((v,k)=>{data[k]=v;});
+  ['annual','casual','medical'].forEach(f=>{if(data[f])data[f]=+data[f]});
+  const payload = {...data, leaveBalances: {annual: data.annual, casual: data.casual, medical: data.medical}};
+  delete payload.annual; delete payload.casual; delete payload.medical;
+  let url, method;
+  if (drawerEditId) {
+    url = `/employees/${drawerEditId}`; method = 'PUT';
+  } else {
+    url = '/employees'; method = 'POST';
+  }
+  await fetch(API+url, {method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  closeEmpDrawer();
+  await loadEmployeesManage();
+  await loadEmployeesPortal();
+}
+
+async function getDynamicEmployeeFields() {
+  const emps = await getJSON('/employees');
+  let sample = emps[0] || {};
+  let leaveFields = [];
+  if (sample.leaveBalances) {
+    Object.entries(sample.leaveBalances).forEach(([k,v])=>{
+      leaveFields.push({key:k,label:k.charAt(0).toUpperCase()+k.slice(1)+' Leave',type:'number',required:false});
+    });
+  }
+  const requiredFields = ['name', 'title', 'country/city'];
+  let normalFields = Object.keys(sample)
+    .filter(k=>k!=='id' && k!=='leaveBalances')
+    .map(k=>{
+      let isRequired = requiredFields.includes(k.toLowerCase());
+      if (['status','Status'].includes(k)) return {key:k,label:'Status',type:'select',options:['active','inactive'],required:isRequired};
+      return {key:k,label:k.charAt(0).toUpperCase()+k.slice(1),type:'text',required:isRequired};
+    });
+  return [...normalFields, ...leaveFields];
+}
+
+function onEmpCancel() {
+  editId = null;
+  document.getElementById('formLegend').textContent = 'Add New Employee';
+  document.getElementById('empForm').reset();
+}
+async function onEmpFormSubmit(ev) {
+  ev.preventDefault();
+  const payload = {
+    name: document.getElementById('empName').value,
+    status: document.getElementById('empStatus').value,
+    leaveBalances: {
+      annual:  +document.getElementById('empAnnual').value,
+      casual:  +document.getElementById('empCasual').value,
+      medical: +document.getElementById('empMedical').value
+    }
+  };
+  const url    = editId ? `/employees/${editId}` : '/employees';
+  const method = editId ? 'PUT' : 'POST';
+  await fetch(API+url, {
+    method,
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  editId = null;
+  document.getElementById('formLegend').textContent = 'Add New Employee';
+  document.getElementById('empForm').reset();
+  await loadEmployeesManage();
+  await loadEmployeesPortal();
+}

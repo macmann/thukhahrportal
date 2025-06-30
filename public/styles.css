@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.sticky-col {
+  position: sticky;
+  background: white;
+}
+.left-0 { left: 0; }
+.right-0 { right: 0; }
+.z-10 { z-index: 10; }
+.overflow-x-auto {
+  overflow-x: scroll !important;
+  scrollbar-width: auto;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+.overflow-x-auto::-webkit-scrollbar {
+  height: 10px;
+  background: #f1f5f9;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+/* This ensures the first and second columns ("No" and "Name") are both sticky. */
+.sticky-col {
+  position: sticky;
+  background: white;
+}
+.left-0 { left: 0; }
+.left-1 { left: 60px; } /* adjust if your first col is wider or narrower than 60px */
+.right-0 { right: 0; }
+.z-10 { z-index: 10; }
+.z-20 { z-index: 20; }
+.z-30 { z-index: 30; }
+
+.sticky-col    { position: sticky; background: white; }
+.no-col        { width: 56px; min-width: 56px; max-width: 56px; left: 0; z-index: 30; }
+.name-col      { width: 180px; min-width: 180px; max-width: 180px; left: 56px; z-index: 20; }
+.actions-col   { right: 0; z-index: 10; }
