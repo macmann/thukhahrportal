@@ -1892,6 +1892,384 @@
       "password": "brillar",
       "employeeId": 1751121861667,
       "role": "manager"
+    },
+    {
+      "id": 4,
+      "email": "zarlwin.htet@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861653,
+      "role": "employee"
+    },
+    {
+      "id": 5,
+      "email": "latyarlapyae@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861655,
+      "role": "employee"
+    },
+    {
+      "id": 6,
+      "email": "nandarkhine@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861656,
+      "role": "employee"
+    },
+    {
+      "id": 7,
+      "email": "phuupwintthinzar.kyaing@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861658,
+      "role": "employee"
+    },
+    {
+      "id": 8,
+      "email": "winthiri.maung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861659,
+      "role": "employee"
+    },
+    {
+      "id": 9,
+      "email": "thihan.zeya@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861660,
+      "role": "employee"
+    },
+    {
+      "id": 10,
+      "email": "hsulae.ko@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861661,
+      "role": "employee"
+    },
+    {
+      "id": 11,
+      "email": "khinsusu.hlaing@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861662,
+      "role": "employee"
+    },
+    {
+      "id": 12,
+      "email": "htetwai.oo@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861663,
+      "role": "employee"
+    },
+    {
+      "id": 13,
+      "email": "hninhtoo.thadar@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861664,
+      "role": "employee"
+    },
+    {
+      "id": 14,
+      "email": "yamone.ko@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861665,
+      "role": "employee"
+    },
+    {
+      "id": 15,
+      "email": "myathida.aung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861666,
+      "role": "employee"
+    },
+    {
+      "id": 16,
+      "email": "hein.arkar@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861668,
+      "role": "employee"
+    },
+    {
+      "id": 17,
+      "email": "minkhant.kyaw@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861669,
+      "role": "employee"
+    },
+    {
+      "id": 18,
+      "email": "myathtet.kyaw@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861670,
+      "role": "employee"
+    },
+    {
+      "id": 19,
+      "email": "naylin.aung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861671,
+      "role": "employee"
+    },
+    {
+      "id": 20,
+      "email": "lamin.thant@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861672,
+      "role": "employee"
+    },
+    {
+      "id": 21,
+      "email": "zuzan.win@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861673,
+      "role": "employee"
+    },
+    {
+      "id": 22,
+      "email": "thazin.win@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861674,
+      "role": "employee"
+    },
+    {
+      "id": 23,
+      "email": "april.naing@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861676,
+      "role": "employee"
+    },
+    {
+      "id": 24,
+      "email": "htetpaing.htun@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861677,
+      "role": "employee"
+    },
+    {
+      "id": 25,
+      "email": "shoonlei.naing@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861678,
+      "role": "employee"
+    },
+    {
+      "id": 26,
+      "email": "aungthu.win@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861679,
+      "role": "employee"
+    },
+    {
+      "id": 27,
+      "email": "winhtet.aung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861680,
+      "role": "employee"
+    },
+    {
+      "id": 28,
+      "email": "kaungkhant.koko@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861681,
+      "role": "employee"
+    },
+    {
+      "id": 29,
+      "email": "myintmo.thanmaung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861682,
+      "role": "employee"
+    },
+    {
+      "id": 30,
+      "email": "pyae.hein@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861683,
+      "role": "employee"
+    },
+    {
+      "id": 31,
+      "email": "sumon.htet@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861684,
+      "role": "employee"
+    },
+    {
+      "id": 32,
+      "email": "phoopyaepyae.soe@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861685,
+      "role": "employee"
+    },
+    {
+      "id": 33,
+      "email": "naymyo.kyaw@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861686,
+      "role": "employee"
+    },
+    {
+      "id": 34,
+      "email": "maymyat.theingi@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861687,
+      "role": "employee"
+    },
+    {
+      "id": 35,
+      "email": "thurain.oo@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861688,
+      "role": "employee"
+    },
+    {
+      "id": 36,
+      "email": "kyisoe.thin@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861689,
+      "role": "employee"
+    },
+    {
+      "id": 37,
+      "email": "phyozarzar.myat@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861690,
+      "role": "employee"
+    },
+    {
+      "id": 38,
+      "email": "dimple.pojitha@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861691,
+      "role": "manager"
+    },
+    {
+      "id": 39,
+      "email": "budiman.tsjin@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861692,
+      "role": "manager"
+    },
+    {
+      "id": 40,
+      "email": "ayemyo.myat@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861693,
+      "role": "employee"
+    },
+    {
+      "id": 41,
+      "email": "thinyanant.koko@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861694,
+      "role": "employee"
+    },
+    {
+      "id": 42,
+      "email": "nyanphone.hlaing@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861695,
+      "role": "employee"
+    },
+    {
+      "id": 43,
+      "email": "swelmyatsandi.minthein@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861696,
+      "role": "employee"
+    },
+    {
+      "id": 44,
+      "email": "khant.maung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861697,
+      "role": "employee"
+    },
+    {
+      "id": 45,
+      "email": "hanthuthu.khine@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861698,
+      "role": "employee"
+    },
+    {
+      "id": 46,
+      "email": "eaindray@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861699,
+      "role": "employee"
+    },
+    {
+      "id": 47,
+      "email": "hanmyint.myat@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861700,
+      "role": "employee"
+    },
+    {
+      "id": 48,
+      "email": "maymyatmon.kyaw@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861701,
+      "role": "employee"
+    },
+    {
+      "id": 49,
+      "email": "wailwin.phyo@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861702,
+      "role": "employee"
+    },
+    {
+      "id": 50,
+      "email": "htin.linn@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861703,
+      "role": "employee"
+    },
+    {
+      "id": 51,
+      "email": "nyanlin.aung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861704,
+      "role": "employee"
+    },
+    {
+      "id": 52,
+      "email": "minthantpyae.sone@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861705,
+      "role": "employee"
+    },
+    {
+      "id": 53,
+      "email": "chanmin.kyaw@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861706,
+      "role": "employee"
+    },
+    {
+      "id": 54,
+      "email": "hninnandar.aung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861707,
+      "role": "employee"
+    },
+    {
+      "id": 55,
+      "email": "htoohhet.aung@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861708,
+      "role": "employee"
+    },
+    {
+      "id": 56,
+      "email": "minkhant.san@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861709,
+      "role": "employee"
+    },
+    {
+      "id": 57,
+      "email": "moeset.willy@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861710,
+      "role": "employee"
     }
   ]
 }
