@@ -1826,55 +1826,7 @@
     }
   ],
   "applications": [
-    {
-      "id": 1751449260731,
-      "employeeId": 1751121861600,
-      "type": "annual",
-      "from": "2025-07-02",
-      "to": "2025-07-02",
-      "reason": "g",
-      "status": "rejected",
-      "approvedBy": "kaungsan.phyoe@brillar.io",
-      "approverRemark": "",
-      "approvedAt": "2025-07-02T09:41:07.014Z"
-    },
-    {
-      "id": 1751449310369,
-      "employeeId": 1751121861600,
-      "type": "annual",
-      "from": "2025-07-02",
-      "to": "2025-07-02",
-      "reason": "going out",
-      "status": "approved",
-      "halfDay": true,
-      "approvedBy": "kaungsan.phyoe@brillar.io",
-      "approverRemark": "",
-      "approvedAt": "2025-07-02T09:41:55.968Z"
-    },
-    {
-      "id": 1751449338458,
-      "employeeId": 1751121861607,
-      "type": "medical",
-      "from": "2025-07-02",
-      "to": "2025-07-02",
-      "reason": "sick",
-      "status": "approved",
-      "approvedBy": "kaungsan.phyoe@brillar.io",
-      "approverRemark": "",
-      "approvedAt": "2025-07-02T09:42:23.636Z"
-    },
-    {
-      "id": 1751451370061,
-      "employeeId": 1751121861602,
-      "type": "medical",
-      "from": "2025-07-03",
-      "to": "2025-07-04",
-      "reason": "I m sick",
-      "status": "approved",
-      "approvedBy": "kaungsan.phyoe@brillar.io",
-      "approverRemark": "",
-      "approvedAt": "2025-07-02T10:16:28.679Z"
-    }
+    
   ],
   "users": [
     {
