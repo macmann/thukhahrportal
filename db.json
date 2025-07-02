@@ -2097,7 +2097,7 @@
     },
     {
       "id": 39,
-      "email": "budiman.tsjin@brillar.io",
+      "email": "budi@brillar.io",
       "password": "brillar",
       "employeeId": 1751121861638,
       "role": "manager"
@@ -2227,6 +2227,13 @@
       "password": "brillar",
       "employeeId": 1751121861656,
       "role": "employee"
+    },
+      {
+      "id": 58,
+      "email": "win@brillar.io",
+      "password": "brillar",
+      "employeeId": 1751121861656,
+      "role": "manager"
     }
   ]
 }
