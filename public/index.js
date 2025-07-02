@@ -177,30 +177,27 @@ async function onEmployeeChange() {
     document.getElementById('prevLeaves').innerHTML = '';
     return;
   }
+  // Fetch employee and applications
   const [emps, apps] = await Promise.all([
     getJSON('/employees'),
     getJSON(`/applications?employeeId=${empId}`)
   ]);
   const emp = emps.find(e => e.id == empId);
   if (!emp) return;
-  const taken = apps.reduce((acc, app) => {
-    const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
-    acc[app.type] = (acc[app.type] || 0) + days;
-    return acc;
-  }, {});
-  const remain = {
-    annual:  emp.leaveBalances.annual  - (taken.annual  || 0),
-    casual:  emp.leaveBalances.casual  - (taken.casual  || 0),
-    medical: emp.leaveBalances.medical - (taken.medical || 0)
-  };
-  balAnnual.textContent = remain.annual;
-  balCasual.textContent = remain.casual;
-  balMedical.textContent = remain.medical;
+
+  // === NEW: Show current leave balances (no deduction here, backend handles it) ===
+  balAnnual.textContent = emp.leaveBalances.annual;
+  balCasual.textContent = emp.leaveBalances.casual;
+  balMedical.textContent = emp.leaveBalances.medical;
+
+  // Set leave type options
   typeSel.innerHTML = `
-    <option value="annual">Annual (${remain.annual} days)</option>
-    <option value="casual">Casual (${remain.casual} days)</option>
-    <option value="medical">Medical (${remain.medical} days)</option>
+    <option value="annual">Annual (${emp.leaveBalances.annual} days)</option>
+    <option value="casual">Casual (${emp.leaveBalances.casual} days)</option>
+    <option value="medical">Medical (${emp.leaveBalances.medical} days)</option>
   `;
+
+  // Show previous leaves
   renderPreviousLeaves(apps, emp);
 }
 
@@ -211,13 +208,16 @@ function onApplySubmit(ev) {
   const type = document.getElementById('type').value;
   const from = document.getElementById('from').value;
   const to = document.getElementById('to').value;
+  const halfDay = document.getElementById('halfDay').checked;
+  const halfDayPeriod = halfDay ? document.getElementById('halfDayPeriod').value : null;
   if (!empId || !type || !from || !to) {
     alert('Fill all fields!');
     return;
   }
-  pendingApply = { employeeId: +empId, type, from, to };
+  pendingApply = { employeeId: +empId, type, from, to, halfDay, halfDayPeriod };
   openReasonModal();
 }
+
 function openReasonModal() {
   document.getElementById('reasonInput').value = '';
   document.getElementById('reasonModal').classList.remove('hidden');
@@ -256,16 +256,22 @@ function renderPreviousLeaves(apps, emp) {
   }
   const typeIcon = { annual: '🌴', casual: '🏖️', medical: '🏥' };
   container.innerHTML = apps.sort((a,b)=>new Date(b.from)-new Date(a.from)).map(app => {
-    const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    let days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    let daysText = days;
+    let typeLabel = capitalize(app.type) + ' Leave';
+    if (app.halfDay) {
+      daysText = '0.5';
+      typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
+    }
     return `
       <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 w-64">
         <div class="flex items-center gap-2 mb-2 font-semibold">
           <span class="text-lg">${typeIcon[app.type]||''}</span>
-          <span>${capitalize(app.type)} Leave</span>
+          <span>${typeLabel}</span>
         </div>
         <div class="mb-1 text-gray-700"><b>From:</b> ${app.from}</div>
         <div class="mb-1 text-gray-700"><b>To:</b> ${app.to}</div>
-        <div class="mb-1 text-gray-700"><b>Days:</b> ${days}</div>
+        <div class="mb-1 text-gray-700"><b>Days:</b> ${daysText}</div>
         <div class="mb-1 text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
         <div class="mt-2">
           <span class="text-xs rounded px-2 py-1 ${app.status==='pending'?'bg-yellow-100 text-yellow-800':app.status==='rejected'?'bg-red-100 text-red-800':'bg-green-100 text-green-800'}">
@@ -278,40 +284,13 @@ function renderPreviousLeaves(apps, emp) {
     `;
   }).join('');
 }
+
 function capitalize(str) {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 // ========== MANAGER LEAVE APPLICATIONS TAB LOGIC ==========
-
-// Utility for capitalizing leave type
-function capitalize(str) {
-  if (!str) return '';
-  return str[0].toUpperCase() + str.slice(1);
-}
-
-// --- Approve/Reject handlers ---
-window.approveApp = async function (id, isApprove) {
-  const action = isApprove ? 'approve' : 'reject';
-  const remark = document.getElementById(`remark-${id}`)?.value || '';
-  try {
-    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    const res = await fetch(`/applications/${id}/${action}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({
-        approver: currentUser ? currentUser.email : '',
-        remark: remark
-      })
-    });
-    if (!res.ok) throw new Error('Update failed');
-    toast('Leave ' + (isApprove ? 'approved' : 'rejected') + '!', 'success');
-    await loadManagerApplications();
-  } catch (err) {
-    toast('Error updating leave.', 'error');
-  }
-};
 
 async function loadManagerApplications() {
   // Get all pending applications
@@ -323,16 +302,25 @@ async function loadManagerApplications() {
   } else {
     list.innerHTML = apps.map(app => {
       const emp = emps.find(e => e.id == app.employeeId);
-      const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+      let days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+      let daysText = days;
+      let typeLabel = capitalize(app.type) + ' Leave';
+      if (app.halfDay) {
+        daysText = '0.5';
+        typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
+      }
+      // Calculate cancel eligibility: current date before "from" date
+      const now = new Date();
+      const canCancel = new Date(app.from) > now;
       return `
         <div class="bg-gray-50 border rounded-lg shadow p-4 flex flex-col md:flex-row md:items-center gap-4">
           <div class="flex-1">
             <div class="flex items-center font-semibold mb-1">
               <span class="text-orange-500 mr-2">📝</span>
               <span>${emp ? emp.name : 'Unknown'}</span>
-              <span class="ml-3 px-2 rounded text-xs bg-blue-100 text-blue-700">${capitalize(app.type)} Leave</span>
+              <span class="ml-3 px-2 rounded text-xs bg-blue-100 text-blue-700">${typeLabel}</span>
             </div>
-            <div class="text-sm mb-1 text-gray-700"><b>From:</b> ${app.from} <b>To:</b> ${app.to} <b>Days:</b> ${days}</div>
+            <div class="text-sm mb-1 text-gray-700"><b>From:</b> ${app.from} <b>To:</b> ${app.to} <b>Days:</b> ${daysText}</div>
             <div class="text-sm mb-1 text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
           </div>
           <div class="flex flex-col items-end gap-2">
@@ -340,19 +328,75 @@ async function loadManagerApplications() {
             <div class="flex gap-2">
               <button class="px-3 py-1 bg-green-500 text-white rounded" onclick="approveApp(${app.id}, true)">Approve</button>
               <button class="px-3 py-1 bg-red-500 text-white rounded" onclick="approveApp(${app.id}, false)">Reject</button>
+              ${canCancel ? `<button class="px-3 py-1 bg-gray-700 text-white rounded" onclick="cancelApp(${app.id})">Cancel</button>` : ''}
             </div>
           </div>
         </div>
       `;
     }).join('');
   }
+  // show today leave employees
+  await loadOnLeaveToday();  // <== 👈 keep this call
 
   // === NEW: Upcoming Approved Leaves (next 1 month) ===
   await loadManagerUpcomingLeaves();
+
+  // Show cancel for future approved as well
+  await loadManagerUpcomingLeaves(true);
 }
 
-// New function to show upcoming approved leaves
-async function loadManagerUpcomingLeaves() {
+
+async function loadOnLeaveToday() {
+  const list = document.getElementById('onLeaveTodayList');
+  list.innerHTML = `<div class="text-gray-500">Loading...</div>`;
+  try {
+    const [emps, apps] = await Promise.all([
+      getJSON('/employees'),
+      getJSON('/applications')
+    ]);
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Filter apps: status=approved AND today in [from, to]
+    const onLeave = apps.filter(app =>
+      app.status === 'approved' &&
+      new Date(app.from) <= new Date(today) &&
+      new Date(app.to) >= new Date(today)
+    );
+
+    if (!onLeave.length) {
+      list.innerHTML = `<div class="text-gray-400 py-2">No one is on leave today.</div>`;
+      return;
+    }
+
+    list.innerHTML = onLeave.map(app => {
+      const emp = emps.find(e => e.id == app.employeeId);
+      let typeLabel = capitalize(app.type) + ' Leave';
+      if (app.halfDay) {
+        typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
+      }
+      return `
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm p-4 w-full flex flex-col md:flex-row md:items-center gap-2 mb-2">
+          <div class="flex-1">
+            <div class="flex items-center font-semibold mb-1">
+              <span class="text-yellow-600 mr-2">🟧</span>
+              <span>${emp ? emp.name : 'Unknown'}</span>
+              <span class="ml-3 px-2 rounded text-xs bg-blue-100 text-blue-700">${emp && emp.Project ? emp.Project : ''}</span>
+              <span class="ml-3 px-2 rounded text-xs bg-green-100 text-green-700">${typeLabel}</span>
+            </div>
+            <div class="text-gray-700"><b>From:</b> ${app.from}</div>
+            <div class="text-gray-700"><b>To:</b> ${app.to}</div>
+            <div class="text-gray-700"><b>Reason:</b> <span class="italic">${app.reason || '-'}</span></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    list.innerHTML = `<div class="text-red-400">Failed to load on-leave data.</div>`;
+    console.error(err);
+  }
+}
+
+async function loadManagerUpcomingLeaves(showCancel = false) {
   const list = document.getElementById('managerUpcomingList');
   if (!list) return;
   const allApproved = await getJSON('/applications?status=approved');
@@ -361,15 +405,13 @@ async function loadManagerUpcomingLeaves() {
   const oneMonthLater = new Date();
   oneMonthLater.setMonth(now.getMonth() + 1);
 
-  // Show approved leave that overlaps with next 1 month
   const filtered = allApproved.filter(app => {
-    // Show only future or ongoing leave (start or end in next 1 month)
     const from = new Date(app.from);
     const to = new Date(app.to);
     return (
       (from >= now && from <= oneMonthLater) ||
       (to >= now && to <= oneMonthLater) ||
-      (from <= now && to >= now) // ongoing leave
+      (from <= now && to >= now)
     );
   });
 
@@ -382,40 +424,48 @@ async function loadManagerUpcomingLeaves() {
 
   list.innerHTML = filtered.sort((a, b) => new Date(a.from) - new Date(b.from)).map(app => {
     const emp = emps.find(e => e.id == app.employeeId);
-    const days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    let days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    let daysText = days;
+    let typeLabel = capitalize(app.type) + ' Leave';
+    if (app.halfDay) {
+      daysText = '0.5';
+      typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
+    }
+    // Show cancel if approved leave in future
+    const canCancel = new Date(app.from) > now;
     return `
       <div class="bg-white border border-green-100 rounded-lg shadow-sm p-4 w-full flex flex-col md:flex-row md:items-center gap-2">
         <div class="flex-1">
           <div class="flex items-center gap-2 font-semibold mb-1">
             <span class="text-green-600">${typeIcon[app.type]||''}</span>
-            <span>${capitalize(app.type)} Leave</span>
+            <span>${typeLabel}</span>
             <span class="ml-2 px-2 rounded text-xs bg-green-100 text-green-700">Approved</span>
           </div>
           <div class="text-gray-700"><b>Name:</b> ${emp ? emp.name : 'Unknown'}</div>
           <div class="text-gray-700"><b>From:</b> ${app.from}</div>
           <div class="text-gray-700"><b>To:</b> ${app.to}</div>
-          <div class="text-gray-700"><b>Days:</b> ${days}</div>
+          <div class="text-gray-700"><b>Days:</b> ${daysText}</div>
           <div class="text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
         </div>
         <div class="flex flex-col gap-1 min-w-[160px]">
           <span class="text-xs text-gray-500">By: ${app.approvedBy||'-'}</span>
           ${app.approverRemark ? `<span class="text-xs italic text-gray-600">Remark: ${app.approverRemark}</span>` : ''}
           <span class="text-xs text-gray-400">${app.approvedAt ? `Approved At: ${app.approvedAt.substring(0,10)}` : ''}</span>
+          ${canCancel ? `<button class="px-3 py-1 mt-2 bg-gray-700 text-white rounded" onclick="cancelApp(${app.id})">Cancel</button>` : ''}
         </div>
       </div>
     `;
   }).join('');
 }
 
-// Expose for inline HTML
 window.approveApp = async function(id, approve) {
-  const remark = document.getElementById(`remark-${id}`).value;
+  const remark = document.getElementById(`remark-${id}`)?.value || '';
   const res = await fetch(`/applications/${id}/${approve?'approve':'reject'}`, {
     method: 'PATCH',
     headers: { 'Content-Type':'application/json' },
     body: JSON.stringify({
       approver: currentUser ? currentUser.email : '',
-      remark: remark || ''
+      remark: remark
     })
   });
   if (res.ok) {
@@ -423,6 +473,25 @@ window.approveApp = async function(id, approve) {
     await loadManagerApplications();
   } else {
     alert('Error updating leave.');
+  }
+};
+
+// NEW: Cancel Leave Functionality for Manager
+window.cancelApp = async function(appId) {
+  if (!confirm("Are you sure to cancel this leave application?")) return;
+  const res = await fetch(`/applications/${appId}/cancel`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      manager: currentUser ? currentUser.email : ''
+    })
+  });
+  if (res.ok) {
+    alert('Leave cancelled.');
+    await loadManagerApplications();
+    await onEmployeeChange();
+  } else {
+    alert('Failed to cancel leave.');
   }
 };
 
