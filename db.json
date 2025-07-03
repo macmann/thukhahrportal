@@ -387,7 +387,7 @@
     {
       "id": 1751121861612,
       "name": "Yamone Ko",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -419,7 +419,7 @@
     {
       "id": 1751121861613,
       "name": "Mya Thida Aung",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -803,7 +803,7 @@
     {
       "id": 1751121861625,
       "name": "Aung Thu Win",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -835,7 +835,7 @@
     {
       "id": 1751121861626,
       "name": "Win Htet Aung",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -1251,7 +1251,7 @@
     {
       "id": 1751121861639,
       "name": "Aye Myo Myat",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -1347,7 +1347,7 @@
     {
       "id": 1751121861642,
       "name": "Swel Myat Sandi Min Thein",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -1411,7 +1411,7 @@
     {
       "id": 1751121861644,
       "name": "Han Thu Thu Khine",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -1443,7 +1443,7 @@
     {
       "id": 1751121861645,
       "name": "Eain Dray",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -1507,7 +1507,7 @@
     {
       "id": 1751121861647,
       "name": "May Myat Mon Kyaw",
-      "status": "active",
+      "status": "inactive",
       "leaveBalances": {
         "annual": 10,
         "casual": 5,
@@ -2090,7 +2090,7 @@
     },
     {
       "id": 38,
-      "email": "dimple.pojitha@brillar.io",
+      "email": "dimple.poojitha@brillar.io",
       "password": "brillar",
       "employeeId": 1751121861637,
       "role": "manager"
