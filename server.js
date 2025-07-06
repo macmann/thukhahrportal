@@ -58,6 +58,23 @@ init().then(() => {
     });
   });
 
+  // ========== CHANGE PASSWORD ==========
+  app.post('/change-password', authRequired, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+    await db.read();
+    const user = db.data.users?.find(u => u.id === req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.password !== currentPassword) {
+      return res.status(400).json({ error: 'Current password incorrect' });
+    }
+    user.password = newPassword;
+    await db.write();
+    res.json({ success: true });
+  });
+
   // ========== EMPLOYEES ==========
   app.get('/employees', async (req, res) => {
     await db.read();
