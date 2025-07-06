@@ -6,10 +6,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!localStorage.getItem('brillar_token')) {
     document.getElementById('loginPage').classList.remove('hidden');
     document.getElementById('logoutBtn').classList.add('hidden');
+    document.getElementById('changePassBtn').classList.add('hidden');
     document.getElementById('mainApp').classList.add('hidden');
   } else {
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
+    document.getElementById('changePassBtn').classList.remove('hidden');
     document.getElementById('mainApp').classList.remove('hidden');
     try {
       currentUser = JSON.parse(localStorage.getItem('brillar_user'));
@@ -37,6 +39,7 @@ document.getElementById('loginForm').onsubmit = async function(ev) {
     localStorage.setItem('brillar_user', JSON.stringify(currentUser));
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
+    document.getElementById('changePassBtn').classList.remove('hidden');
     document.getElementById('mainApp').classList.remove('hidden');
     toggleTabsByRole();
     init();
@@ -52,6 +55,7 @@ function logout() {
   localStorage.removeItem('brillar_user');
   document.getElementById('loginPage').classList.remove('hidden');
   document.getElementById('logoutBtn').classList.add('hidden');
+  document.getElementById('changePassBtn').classList.add('hidden');
   document.getElementById('mainApp').classList.add('hidden');
   document.getElementById('tabManage').classList.add('hidden');
   document.getElementById('tabManagerApps').classList.add('hidden');
