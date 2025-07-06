@@ -128,6 +128,12 @@ async function init() {
   document.getElementById('drawerCloseBtn').onclick = closeEmpDrawer;
   document.getElementById('empDrawerForm').onsubmit = onEmpDrawerSubmit;
 
+  // Change password handlers
+  document.getElementById('changePassBtn').onclick = openChangePassModal;
+  document.getElementById('passModalClose').onclick = closeChangePassModal;
+  document.getElementById('cancelPassChange').onclick = closeChangePassModal;
+  document.getElementById('changePassForm').onsubmit = onChangePassSubmit;
+
   const empCancelBtn = document.getElementById('empCancelBtn');
   if (empCancelBtn) empCancelBtn.onclick = onEmpCancel;
   const empForm = document.getElementById('empForm');
@@ -226,6 +232,42 @@ function openReasonModal() {
 function closeReasonModal() {
   document.getElementById('reasonModal').classList.add('hidden');
   pendingApply = null;
+}
+
+function openChangePassModal() {
+  document.getElementById('changePassForm').reset();
+  document.getElementById('changePassModal').classList.remove('hidden');
+}
+
+function closeChangePassModal() {
+  document.getElementById('changePassModal').classList.add('hidden');
+}
+
+async function onChangePassSubmit(ev) {
+  ev.preventDefault();
+  const current = document.getElementById('currentPassword').value.trim();
+  const np = document.getElementById('newPassword').value.trim();
+  const cp = document.getElementById('confirmPassword').value.trim();
+  if (np !== cp) {
+    alert('Passwords do not match');
+    return;
+  }
+  const token = localStorage.getItem('brillar_token');
+  const res = await fetch(API + '/change-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
+    body: JSON.stringify({ currentPassword: current, newPassword: np })
+  });
+  if (res.ok) {
+    alert('Password changed successfully');
+    closeChangePassModal();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Error changing password');
+  }
 }
 async function onReasonSubmit(ev) {
   ev.preventDefault();
