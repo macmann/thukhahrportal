@@ -4,6 +4,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 const { db, init } = require('./db');
 
 const app = express();
@@ -16,6 +17,37 @@ function loadDB() {
 }
 function saveDB(data) {
   fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
+
+// ---- EMAIL SETUP ----
+const mailTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: process.env.SMTP_SECURE === 'true',
+  auth: process.env.SMTP_USER ? {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  } : undefined
+});
+
+async function sendEmail(to, subject, text) {
+  if (!to || !process.env.SMTP_HOST) return;
+  try {
+    await mailTransporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to,
+      subject,
+      text
+    });
+  } catch (err) {
+    console.error('Failed to send email', err);
+  }
+}
+
+function getEmpEmail(emp) {
+  if (!emp) return '';
+  const key = Object.keys(emp).find(k => k.toLowerCase() === 'email');
+  return emp[key];
 }
 
 const SESSION_TOKENS = {}; // token: userId
@@ -169,11 +201,25 @@ init().then(() => {
 
     db.data.applications.push(newApp);
     await db.write();
+
+    // Notify managers of new application
+    const managers = (db.data.users || []).filter(u => u.role === 'manager');
+    const managerEmails = managers.map(m => m.email).filter(Boolean);
+    const empEmail = getEmpEmail(emp);
+    const name = emp?.name || empEmail || `Employee ${employeeId}`;
+    if (managerEmails.length) {
+      await sendEmail(
+        managerEmails.join(','),
+        `Leave request from ${name}`,
+        `${name} applied for ${type} leave from ${from} to ${to}.`
+      );
+    }
+
     res.status(201).json(newApp);
   });
 
   // ---- APPROVE LEAVE ----
-  app.patch('/applications/:id/approve', (req, res) => {
+  app.patch('/applications/:id/approve', async (req, res) => {
     const { id } = req.params;
     const { approver, remark } = req.body;
     const dbObj = loadDB();
@@ -187,11 +233,23 @@ init().then(() => {
     dbObj.applications[appIdx].approverRemark = remark || '';
     dbObj.applications[appIdx].approvedAt = new Date().toISOString();
     saveDB(dbObj);
+
+    const emp = dbObj.employees.find(e => e.id == dbObj.applications[appIdx].employeeId);
+    const email = getEmpEmail(emp);
+    const name = emp?.name || email || `Employee ${dbObj.applications[appIdx].employeeId}`;
+    if (email) {
+      await sendEmail(
+        email,
+        'Leave approved',
+        `${name}, your leave from ${dbObj.applications[appIdx].from} to ${dbObj.applications[appIdx].to} has been approved.`
+      );
+    }
+
     res.json(dbObj.applications[appIdx]);
   });
 
   // ---- REJECT LEAVE ----
-  app.patch('/applications/:id/reject', (req, res) => {
+  app.patch('/applications/:id/reject', async (req, res) => {
     const { id } = req.params;
     const { approver, remark } = req.body;
     const dbObj = loadDB();
@@ -215,11 +273,23 @@ init().then(() => {
     dbObj.applications[appIdx].approverRemark = remark || '';
     dbObj.applications[appIdx].approvedAt = new Date().toISOString();
     saveDB(dbObj);
+
+    const emp = dbObj.employees.find(e => e.id == app.employeeId);
+    const email = getEmpEmail(emp);
+    const name = emp?.name || email || `Employee ${app.employeeId}`;
+    if (email) {
+      await sendEmail(
+        email,
+        'Leave rejected',
+        `${name}, your leave from ${app.from} to ${app.to} has been rejected.`
+      );
+    }
+
     res.json(dbObj.applications[appIdx]);
   });
 
   // ---- CANCEL LEAVE ----
-  app.patch('/applications/:id/cancel', (req, res) => {
+  app.patch('/applications/:id/cancel', async (req, res) => {
     const { id } = req.params;
     const dbObj = loadDB();
     const appIdx = dbObj.applications.findIndex(x => x.id == id);
@@ -247,6 +317,18 @@ init().then(() => {
     dbObj.applications[appIdx].status = 'cancelled';
     dbObj.applications[appIdx].cancelledAt = new Date().toISOString();
     saveDB(dbObj);
+
+    const emp = dbObj.employees.find(e => e.id == appObjApp.employeeId);
+    const email = getEmpEmail(emp);
+    const name = emp?.name || email || `Employee ${appObjApp.employeeId}`;
+    if (email) {
+      await sendEmail(
+        email,
+        'Leave cancelled',
+        `${name}, your leave from ${appObjApp.from} to ${appObjApp.to} has been cancelled.`
+      );
+    }
+
     res.json(dbObj.applications[appIdx]);
   });
 
