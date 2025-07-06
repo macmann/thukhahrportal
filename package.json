@@ -12,7 +12,8 @@
   "dependencies": {
     "csv-parse": "^5.6.0",
     "express": "^5.1.0",
-    "lowdb": "^7.0.1"
+    "lowdb": "^7.0.1",
+    "nodemailer": "^6.10.1"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
