@@ -5,11 +5,10 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
-const { db, init } = require('./db');
+const { db, init, DB_PATH } = require('./db');
 
 const app = express();
 
-const DB_PATH = path.join(__dirname, 'db.json');
 
 // Utility: Load and Save DB
 function loadDB() {
