@@ -174,9 +174,9 @@
             <span class="font-bold text-green-700 text-lg mr-1" id="activeCountNum">0</span>
             <span class="text-green-700">Active Employees</span>
           </div>
-          <button id="addEmployeeBtn" class="ml-auto bg-blue-600 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-700 transition">
-            + Add Employee
-          </button>
+          <button id="csvUploadBtn" class="ml-auto bg-blue-500 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-600 transition">Upload CSV</button>
+          <button id="addEmployeeBtn" class="ml-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-700 transition">+ Add Employee</button>
+          <input id="csvInput" type="file" accept=".csv" class="hidden">
         </div>
         <div class="overflow-x-auto mb-6" style="overflow-x:auto; min-height:40px;">
           <table id="empTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
