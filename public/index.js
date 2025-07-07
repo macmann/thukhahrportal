@@ -128,6 +128,24 @@ async function init() {
     const fields = await getDynamicEmployeeFields();
     openEmpDrawer({title: 'Add Employee', fields});
   };
+  const csvBtn = document.getElementById('csvUploadBtn');
+  const csvInput = document.getElementById('csvInput');
+  if (csvBtn && csvInput) {
+    csvBtn.onclick = () => csvInput.click();
+    csvInput.onchange = async ev => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      await fetch(API + '/employees/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/csv' },
+        body: text
+      });
+      ev.target.value = '';
+      await loadEmployeesManage();
+      await loadEmployeesPortal();
+    };
+  }
   document.getElementById('drawerCancelBtn').onclick = closeEmpDrawer;
   document.getElementById('drawerCloseBtn').onclick = closeEmpDrawer;
   document.getElementById('empDrawerForm').onsubmit = onEmpDrawerSubmit;

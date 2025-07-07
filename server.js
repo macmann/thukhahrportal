@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { db, init, DB_PATH } = require('./db');
+const { parse } = require('csv-parse/sync');
 
 const app = express();
 
@@ -119,6 +120,40 @@ init().then(() => {
     db.data.employees.push({ id, ...payload });
     await db.write();
     res.status(201).json({ id, ...payload });
+  });
+
+  // ---- BULK CSV UPLOAD ----
+  app.post('/employees/bulk', express.text({ type: '*/*' }), async (req, res) => {
+    await db.read();
+    try {
+      const rows = parse(req.body, { columns: true, skip_empty_lines: true });
+      const start = Date.now();
+      rows.forEach((row, idx) => {
+        const id = start + idx;
+        const nameKey = Object.keys(row).find(k => k.toLowerCase() === 'name');
+        const statusKey = Object.keys(row).find(k => k.toLowerCase() === 'status');
+        const annualKey = Object.keys(row).find(k => k.toLowerCase().includes('annual'));
+        const casualKey = Object.keys(row).find(k => k.toLowerCase().includes('casual'));
+        const medicalKey = Object.keys(row).find(k => k.toLowerCase().includes('medical'));
+        const emp = {
+          id,
+          name: row[nameKey] || '',
+          status: row[statusKey]?.toLowerCase() === 'inactive' ? 'inactive' : 'active',
+          leaveBalances: {
+            annual: Number(row[annualKey] ?? 10),
+            casual: Number(row[casualKey] ?? 5),
+            medical: Number(row[medicalKey] ?? 14)
+          },
+          ...row
+        };
+        db.data.employees.push(emp);
+      });
+      await db.write();
+      res.status(201).json({ added: rows.length });
+    } catch (err) {
+      console.error('CSV parse failed', err);
+      res.status(400).json({ error: 'Invalid CSV' });
+    }
   });
 
   app.put('/employees/:id', async (req, res) => {
