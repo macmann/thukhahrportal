@@ -10,8 +10,15 @@ This is a simple leave management system built with Node.js and Express.
    ```
 2. (Optional) Import employees from the provided CSV:
    ```bash
-   node import.js
-   ```
+ node import.js
+  ```
+
+## Database Storage
+
+The application uses a JSON file database. By default it is stored at
+`mnt/data/db.json`. You can change the location by setting the `DB_PATH`
+environment variable. The database file is listed in `.gitignore` to prevent
+it from being overwritten when pulling updates from GitHub.
 
 ## Email Notifications
 

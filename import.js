@@ -1,6 +1,7 @@
 // import.js
 const fs    = require('fs');
 const path  = require('path');
+const { DB_PATH } = require('./db');
 // Use the supported sync parser entrypoint:
 const { parse } = require('csv-parse/sync');
 
@@ -36,9 +37,8 @@ const db = {
 
 // 5. Write it out
 fs.writeFileSync(
-  path.join(__dirname, 'db.json'),
+  DB_PATH,
   JSON.stringify(db, null, 2),
   'utf-8'
 );
-
-console.log(`Imported ${employees.length} employees into db.json`);
+console.log(`Imported ${employees.length} employees into ${DB_PATH}`);

@@ -1,16 +1,25 @@
 // leave-system/db.js
 const { Low } = require('lowdb');
 const { JSONFile } = require('lowdb/node');
+const fs = require('fs');
+const path = require('path');
 
-// 1. Tell lowdb to use your db.json file, and give it default data:
-const adapter = new JSONFile('db.json');
+// --- Database path setup ---
+const DATA_DIR = path.join(__dirname, 'mnt', 'data');
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'db.json');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Tell lowdb to use the persistent db.json file and provide default data
+const adapter = new JSONFile(DB_PATH);
 const defaultData = { employees: [], applications: [] };
 const db = new Low(adapter, defaultData);
 
-// 2. Initialization function (reads the file and writes defaults if missing):
+// Initialization function (reads the file and writes defaults if missing)
 async function init() {
   await db.read();   // loads db.data (or defaultData if file was empty)
   await db.write();  // ensures file exists with defaultData on first run
 }
 
-module.exports = { db, init };
+module.exports = { db, init, DB_PATH };
