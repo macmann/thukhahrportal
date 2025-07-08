@@ -10,6 +10,10 @@ const { parse } = require('csv-parse/sync');
 
 const app = express();
 
+// Default admin credentials (can be overridden with env vars)
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@brillar.io';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+
 
 // Utility: Load and Save DB
 function loadDB() {
@@ -76,18 +80,29 @@ init().then(() => {
     await db.read();
     const { email, password } = req.body;
     const user = db.data.users?.find(u => u.email === email && u.password === password);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = genToken();
-    SESSION_TOKENS[token] = user.id;
-    res.json({
-      token,
-      user: {
+
+    let userObj;
+    if (user) {
+      userObj = {
         id: user.id,
         email: user.email,
         role: user.role,
         employeeId: user.employeeId
-      }
-    });
+      };
+    } else if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+      userObj = {
+        id: 'admin',
+        email: ADMIN_EMAIL,
+        role: 'manager',
+        employeeId: null
+      };
+    } else {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = genToken();
+    SESSION_TOKENS[token] = userObj.id;
+    res.json({ token, user: userObj });
   });
 
   // ========== CHANGE PASSWORD ==========
