@@ -32,3 +32,10 @@ The server can send email notifications when leave applications are submitted or
 - `SMTP_FROM` - (optional) address used in the `From` header
 
 If these variables are not set, emails will be skipped.
+
+## Admin Login
+
+When the database is empty, you can still log in using a special admin
+account to upload employee data. Configure the credentials with the
+`ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables. They default to
+`admin@brillar.io` and `admin`.
