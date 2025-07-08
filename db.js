@@ -13,12 +13,14 @@ if (!fs.existsSync(DATA_DIR)) {
 
 // Tell lowdb to use the persistent db.json file and provide default data
 const adapter = new JSONFile(DB_PATH);
-const defaultData = { employees: [], applications: [] };
+const defaultData = { employees: [], applications: [], users: [] };
 const db = new Low(adapter, defaultData);
 
 // Initialization function (reads the file and writes defaults if missing)
 async function init() {
   await db.read();   // loads db.data (or defaultData if file was empty)
+  // Ensure all collections exist
+  if (!db.data.users) db.data.users = [];
   await db.write();  // ensures file exists with defaultData on first run
 }
 

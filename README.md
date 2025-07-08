@@ -13,6 +13,13 @@ This is a simple leave management system built with Node.js and Express.
  node import.js
   ```
 
+### CSV Columns
+
+When uploading employees via CSV or the `import.js` script, include an `Email`
+column and a `Role` column. The role should be either `employee` or `manager`.
+User accounts will be created automatically with the email address and the
+default password `brillar`.
+
 ## Database Storage
 
 The application uses a JSON file database. By default it is stored at
