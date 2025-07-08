@@ -133,6 +133,19 @@ init().then(() => {
     const id = Date.now();
     const payload = req.body;
     db.data.employees.push({ id, ...payload });
+    const emailKey = Object.keys(payload).find(k => k.toLowerCase() === 'email');
+    const roleKey = Object.keys(payload).find(k => k.toLowerCase() === 'role');
+    const email = emailKey ? payload[emailKey] : undefined;
+    if (email) {
+      const role = payload[roleKey]?.toLowerCase() === 'manager' ? 'manager' : 'employee';
+      db.data.users.push({
+        id,
+        email,
+        password: 'brillar',
+        role,
+        employeeId: id
+      });
+    }
     await db.write();
     res.status(201).json({ id, ...payload });
   });
@@ -150,6 +163,8 @@ init().then(() => {
         const annualKey = Object.keys(row).find(k => k.toLowerCase().includes('annual'));
         const casualKey = Object.keys(row).find(k => k.toLowerCase().includes('casual'));
         const medicalKey = Object.keys(row).find(k => k.toLowerCase().includes('medical'));
+        const emailKey = Object.keys(row).find(k => k.toLowerCase() === 'email');
+        const roleKey = Object.keys(row).find(k => k.toLowerCase() === 'role');
         const emp = {
           id,
           name: row[nameKey] || '',
@@ -162,6 +177,17 @@ init().then(() => {
           ...row
         };
         db.data.employees.push(emp);
+        const email = emailKey ? row[emailKey] : undefined;
+        if (email) {
+          const role = row[roleKey]?.toLowerCase() === 'manager' ? 'manager' : 'employee';
+          db.data.users.push({
+            id,
+            email,
+            password: 'brillar',
+            role,
+            employeeId: id
+          });
+        }
       });
       await db.write();
       res.status(201).json({ added: rows.length });

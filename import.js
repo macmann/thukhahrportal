@@ -16,8 +16,9 @@ const rows = parse(csvText, {
 });
 
 // 3. Map rows → your JSON structure, pulling Name into name:
+const start = Date.now();
 const employees = rows.map((row, i) => ({
-  id: Date.now() + i,
+  id: start + i,
   name: row['Name'],   // ← ensure this matches your CSV header exactly
   status: row.Status?.toLowerCase() === 'inactive' ? 'inactive' : 'active',
   leaveBalances: {
@@ -29,10 +30,19 @@ const employees = rows.map((row, i) => ({
   ...row
 }));
 
+const users = rows.map((row, i) => ({
+  id: start + i,
+  email: row['Email'],
+  password: 'brillar',
+  role: row['Role']?.toLowerCase() === 'manager' ? 'manager' : 'employee',
+  employeeId: start + i
+}));
+
 // 4. Build the final DB object
 const db = {
   employees,
-  applications: []
+  applications: [],
+  users
 };
 
 // 5. Write it out
