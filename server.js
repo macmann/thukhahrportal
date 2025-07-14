@@ -58,12 +58,26 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---- AUTH ----
-function authRequired(req, res, next) {
+async function authRequired(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token || !SESSION_TOKENS[token]) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  req.userId = SESSION_TOKENS[token];
+  const userId = SESSION_TOKENS[token];
+  await db.read();
+  let user = db.data.users?.find(u => u.id === userId);
+  if (!user && userId === 'admin') {
+    user = { id: 'admin', email: ADMIN_EMAIL, role: 'manager', employeeId: null };
+  }
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  req.user = user;
+  next();
+}
+
+function managerOnly(req, res, next) {
+  if (!req.user || req.user.role !== 'manager') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   next();
 }
 
@@ -105,7 +119,7 @@ init().then(() => {
       return res.status(400).json({ error: 'Missing fields' });
     }
     await db.read();
-    const user = db.data.users?.find(u => u.id === req.userId);
+    const user = db.data.users?.find(u => u.id === req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.password !== currentPassword) {
       return res.status(400).json({ error: 'Current password incorrect' });
@@ -116,12 +130,16 @@ init().then(() => {
   });
 
   // ========== EMPLOYEES ==========
-  app.get('/employees', async (req, res) => {
+  app.get('/employees', authRequired, async (req, res) => {
     await db.read();
-    res.json(db.data.employees);
+    let emps = db.data.employees || [];
+    if (req.user.role !== 'manager') {
+      emps = emps.filter(e => e.id == req.user.employeeId);
+    }
+    res.json(emps);
   });
 
-  app.post('/employees', async (req, res) => {
+  app.post('/employees', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const id = Date.now();
     const payload = req.body;
@@ -144,7 +162,7 @@ init().then(() => {
   });
 
   // ---- BULK CSV UPLOAD ----
-  app.post('/employees/bulk', express.text({ type: '*/*' }), async (req, res) => {
+  app.post('/employees/bulk', authRequired, managerOnly, express.text({ type: '*/*' }), async (req, res) => {
     await db.read();
     try {
       const rows = parse(req.body, { columns: true, skip_empty_lines: true });
@@ -190,7 +208,7 @@ init().then(() => {
     }
   });
 
-  app.put('/employees/:id', async (req, res) => {
+  app.put('/employees/:id', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const emp = db.data.employees.find(e => e.id == req.params.id);
     if (!emp) return res.status(404).json({ error: 'Not found' });
@@ -199,7 +217,7 @@ init().then(() => {
     res.json(emp);
   });
 
-  app.patch('/employees/:id/status', async (req, res) => {
+  app.patch('/employees/:id/status', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const emp = db.data.employees.find(e => e.id == req.params.id);
     if (!emp) return res.status(404).json({ error: 'Not found' });
@@ -208,7 +226,7 @@ init().then(() => {
     res.json(emp);
   });
 
-  app.delete('/employees/:id', async (req, res) => {
+  app.delete('/employees/:id', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const idx = db.data.employees.findIndex(e => e.id == req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
@@ -218,20 +236,24 @@ init().then(() => {
   });
 
   // ========== APPLICATIONS ==========
-  app.get('/applications', async (req, res) => {
+  app.get('/applications', authRequired, async (req, res) => {
     await db.read();
     let apps = db.data.applications || [];
-    if (req.query.employeeId) {
-      apps = apps.filter(a => a.employeeId == req.query.employeeId);
-    }
-    if (req.query.status) {
-      apps = apps.filter(a => a.status === req.query.status);
+    if (req.user.role !== 'manager') {
+      apps = apps.filter(a => a.employeeId == req.user.employeeId);
+    } else {
+      if (req.query.employeeId) {
+        apps = apps.filter(a => a.employeeId == req.query.employeeId);
+      }
+      if (req.query.status) {
+        apps = apps.filter(a => a.status === req.query.status);
+      }
     }
     res.json(apps);
   });
 
   // ---- LEAVE REPORT ----
-  app.get('/leave-report', async (req, res) => {
+  app.get('/leave-report', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const emps = db.data.employees || [];
     const apps = db.data.applications || [];
@@ -253,7 +275,7 @@ init().then(() => {
   });
 
   // ---- LEAVE REPORT CSV EXPORT ----
-  app.get('/leave-report/export', async (req, res) => {
+  app.get('/leave-report/export', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const emps = db.data.employees || [];
     const apps = (db.data.applications || []).filter(a => a.status === 'approved');
@@ -303,8 +325,11 @@ init().then(() => {
   }
 
   // ---- APPLY FOR LEAVE ----
-  app.post('/applications', async (req, res) => {
+  app.post('/applications', authRequired, async (req, res) => {
     await db.read();
+    if (req.user.role !== 'manager' && req.user.employeeId != req.body.employeeId) {
+      return res.status(403).json({ error: 'Cannot apply for another employee' });
+    }
     const { employeeId, type, from, to, reason, halfDay, halfDayType } = req.body;
     const id = Date.now();
     const newApp = {
@@ -349,7 +374,7 @@ init().then(() => {
   });
 
   // ---- APPROVE LEAVE ----
-  app.patch('/applications/:id/approve', async (req, res) => {
+  app.patch('/applications/:id/approve', authRequired, managerOnly, async (req, res) => {
     const { id } = req.params;
     const { approver, remark } = req.body;
     await db.read();
@@ -379,7 +404,7 @@ init().then(() => {
   });
 
   // ---- REJECT LEAVE ----
-  app.patch('/applications/:id/reject', async (req, res) => {
+  app.patch('/applications/:id/reject', authRequired, managerOnly, async (req, res) => {
     const { id } = req.params;
     const { approver, remark } = req.body;
     await db.read();
@@ -419,13 +444,17 @@ init().then(() => {
   });
 
   // ---- CANCEL LEAVE ----
-  app.patch('/applications/:id/cancel', async (req, res) => {
+  app.patch('/applications/:id/cancel', authRequired, async (req, res) => {
     const { id } = req.params;
     await db.read();
     const appIdx = db.data.applications.findIndex(x => x.id == id);
     if (appIdx < 0) return res.status(404).json({ error: 'Not found' });
 
     const appObjApp = db.data.applications[appIdx];
+    if (req.user.role !== 'manager' && appObjApp.employeeId != req.user.employeeId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     if (['cancelled', 'rejected'].includes(appObjApp.status)) {
       return res.status(400).json({ error: 'Already cancelled/rejected' });
     }
@@ -463,7 +492,7 @@ init().then(() => {
   });
 
   // (Legacy/optional: PATCH by status field)
-  app.patch('/applications/:id/decision', async (req, res) => {
+  app.patch('/applications/:id/decision', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const { status } = req.body; // "approved" or "rejected"
     const appIdx = db.data.applications.findIndex(a => a.id == req.params.id);

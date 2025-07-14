@@ -65,6 +65,13 @@ window.logout = logout;
 
 const API = window.location.origin;
 
+function apiFetch(path, options = {}) {
+  const token = localStorage.getItem('brillar_token');
+  options.headers = options.headers || {};
+  if (token) options.headers['Authorization'] = 'Bearer ' + token;
+  return fetch(API + path, options);
+}
+
 // Tab switching logic
 function showPanel(name) {
   const portalBtn   = document.getElementById('tabPortal');
@@ -186,7 +193,7 @@ async function init() {
 
 // ----------- LEAVE PORTAL & REPORTS -----------
 async function getJSON(path) {
-  const res = await fetch(API + path);
+  const res = await apiFetch(path);
   if (!res.ok) return [];
   return await res.json();
 }
@@ -292,12 +299,10 @@ async function onChangePassSubmit(ev) {
     alert('Passwords do not match');
     return;
   }
-  const token = localStorage.getItem('brillar_token');
-  const res = await fetch(API + '/change-password', {
+  const res = await apiFetch('/change-password', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + token
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ currentPassword: current, newPassword: np })
   });
@@ -314,7 +319,7 @@ async function onReasonSubmit(ev) {
   const reason = document.getElementById('reasonInput').value.trim();
   if (!pendingApply || !reason) return;
   const payload = { ...pendingApply, reason };
-  const res = await fetch(API + '/applications', {
+  const res = await apiFetch('/applications', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
@@ -542,7 +547,7 @@ async function loadManagerUpcomingLeaves(showCancel = false) {
 
 window.approveApp = async function(id, approve) {
   const remark = document.getElementById(`remark-${id}`)?.value || '';
-  const res = await fetch(`/applications/${id}/${approve?'approve':'reject'}`, {
+  const res = await apiFetch(`/applications/${id}/${approve?'approve':'reject'}`, {
     method: 'PATCH',
     headers: { 'Content-Type':'application/json' },
     body: JSON.stringify({
@@ -561,7 +566,7 @@ window.approveApp = async function(id, approve) {
 // NEW: Cancel Leave Functionality for Manager
 window.cancelApp = async function(appId) {
   if (!confirm("Are you sure to cancel this leave application?")) return;
-  const res = await fetch(`/applications/${appId}/cancel`, {
+  const res = await apiFetch(`/applications/${appId}/cancel`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -657,7 +662,7 @@ async function onEmpTableClick(e) {
   if (action === 'toggle') {
     const emp = (await getJSON('/employees')).find(x => x.id == id);
     const status = (emp.status === 'active' ? 'inactive' : 'active');
-    await fetch(API + `/employees/${id}/status`, {
+    await apiFetch(`/employees/${id}/status`, {
       method:  'PATCH',
       headers: {'Content-Type':'application/json'},
       body:    JSON.stringify({ status })
@@ -665,7 +670,7 @@ async function onEmpTableClick(e) {
   }
   if (action === 'delete') {
     if (confirm('Are you sure you want to delete this employee?')) {
-      await fetch(API + `/employees/${id}`, {
+      await apiFetch(`/employees/${id}`, {
         method: 'DELETE'
       });
     }
@@ -734,7 +739,7 @@ async function onEmpDrawerSubmit(ev) {
   } else {
     url = '/employees'; method = 'POST';
   }
-  await fetch(API+url, {method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  await apiFetch(url, {method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   closeEmpDrawer();
   await loadEmployeesManage();
   await loadEmployeesPortal();
@@ -778,7 +783,7 @@ async function onEmpFormSubmit(ev) {
   };
   const url    = editId ? `/employees/${editId}` : '/employees';
   const method = editId ? 'PUT' : 'POST';
-  await fetch(API+url, {
+  await apiFetch(url, {
     method,
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload)
