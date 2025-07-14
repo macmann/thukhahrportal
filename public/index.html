@@ -65,6 +65,11 @@
               class="flex-1 py-3 font-semibold hover:bg-gray-300 transition hidden">
         Leave Applications
       </button>
+      <!-- New: Leave Report tab -->
+      <button id="tabLeaveReport"
+              class="flex-1 py-3 font-semibold hover:bg-gray-300 transition hidden">
+        Leave Report
+      </button>
     </nav>
     <div class="container mx-auto my-6 px-2 sm:px-4">
 
@@ -234,6 +239,27 @@
         <!-- ================= END NEW SECTION ================= -->
       </div>
       <!-- ================= END MANAGER PANEL ================= -->
+
+      <!-- ================ LEAVE REPORT PANEL ================= -->
+      <div id="leaveReportPanel" class="hidden bg-white shadow-lg rounded-2xl p-6">
+        <h2 class="font-semibold text-xl mb-6 flex items-center">
+          <svg class="h-8 w-8 text-purple-400 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/></svg>
+          Leave Report
+        </h2>
+        <div class="overflow-x-auto" style="overflow-x:auto;">
+          <table id="leaveReportTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
+            <thead>
+              <tr>
+                <th class="px-4 py-2 font-medium bg-gray-50">Name</th>
+                <th class="px-4 py-2 font-medium bg-gray-50">Total Days</th>
+                <th class="px-4 py-2 font-medium bg-gray-50">Breakdown</th>
+              </tr>
+            </thead>
+            <tbody id="leaveReportBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- ============== END LEAVE REPORT PANEL ================= -->
 
     </div>
   </div>
