@@ -158,6 +158,12 @@ async function init() {
       await loadEmployeesPortal();
     };
   }
+  const exportBtn = document.getElementById('exportLeavesBtn');
+  if (exportBtn) {
+    exportBtn.onclick = () => {
+      window.open(API + '/leave-report/export', '_blank');
+    };
+  }
   document.getElementById('drawerCancelBtn').onclick = closeEmpDrawer;
   document.getElementById('drawerCloseBtn').onclick = closeEmpDrawer;
   document.getElementById('empDrawerForm').onsubmit = onEmpDrawerSubmit;
