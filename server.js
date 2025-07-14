@@ -252,6 +252,46 @@ init().then(() => {
     res.json(report);
   });
 
+  // ---- LEAVE REPORT CSV EXPORT ----
+  app.get('/leave-report/export', async (req, res) => {
+    await db.read();
+    const emps = db.data.employees || [];
+    const apps = (db.data.applications || []).filter(a => a.status === 'approved');
+
+    function escapeCsv(value) {
+      if (!value) return '';
+      const str = String(value);
+      return /[",\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+    }
+
+    const rows = [];
+    for (const app of apps) {
+      const emp = emps.find(e => e.id == app.employeeId) || {};
+      const name = emp.name || '';
+      const start = new Date(app.from);
+      const end = new Date(app.to);
+      if (app.halfDay) {
+        const dateStr = start.toISOString().split('T')[0];
+        const period = app.halfDayType || app.halfDayPeriod || '';
+        const type = `${app.type} (Half Day${period ? ' ' + period : ''})`;
+        rows.push({ name, date: dateStr, type });
+      } else {
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toISOString().split('T')[0];
+          rows.push({ name, date: dateStr, type: app.type });
+        }
+      }
+    }
+
+    const csv = ['Name,Date,Type']
+      .concat(rows.map(r => `${escapeCsv(r.name)},${escapeCsv(r.date)},${escapeCsv(r.type)}`))
+      .join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="leave-report.csv"');
+    res.send(csv);
+  });
+
   // ========== LEAVE LOGIC ==========
 
   // Helper: Get leave days (with half day support)
