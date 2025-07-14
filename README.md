@@ -22,10 +22,10 @@ default password `brillar`.
 
 ## Database Storage
 
-The application uses a JSON file database. By default it is stored at
-`mnt/data/db.json`. You can change the location by setting the `DB_PATH`
-environment variable. The database file is listed in `.gitignore` to prevent
-it from being overwritten when pulling updates from GitHub.
+The application now stores data in MongoDB. Set the connection string using the
+`MONGODB_URI` environment variable and optionally `MONGODB_DB` for the database
+name. If these are not provided the server connects to
+`mongodb://localhost:27017/brillarhrportal`.
 
 ## Email Notifications
 

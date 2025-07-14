@@ -3,9 +3,8 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
-const fs = require('fs');
 const nodemailer = require('nodemailer');
-const { db, init, DB_PATH } = require('./db');
+const { db, init } = require('./db');
 const { parse } = require('csv-parse/sync');
 
 const app = express();
@@ -15,13 +14,7 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@brillar.io';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 
 
-// Utility: Load and Save DB
-function loadDB() {
-  return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-}
-function saveDB(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-}
+
 
 // ---- EMAIL SETUP ----
 const mailTransporter = nodemailer.createTransport({
@@ -297,59 +290,59 @@ init().then(() => {
   app.patch('/applications/:id/approve', async (req, res) => {
     const { id } = req.params;
     const { approver, remark } = req.body;
-    const dbObj = loadDB();
-    const appIdx = dbObj.applications.findIndex(x => x.id == id);
+    await db.read();
+    const appIdx = db.data.applications.findIndex(x => x.id == id);
     if (appIdx < 0) return res.status(404).json({ error: 'Not found' });
-    if (dbObj.applications[appIdx].status !== 'pending')
+    if (db.data.applications[appIdx].status !== 'pending')
       return res.status(400).json({ error: 'Already actioned' });
 
-    dbObj.applications[appIdx].status = 'approved';
-    dbObj.applications[appIdx].approvedBy = approver || '';
-    dbObj.applications[appIdx].approverRemark = remark || '';
-    dbObj.applications[appIdx].approvedAt = new Date().toISOString();
-    saveDB(dbObj);
+    db.data.applications[appIdx].status = 'approved';
+    db.data.applications[appIdx].approvedBy = approver || '';
+    db.data.applications[appIdx].approverRemark = remark || '';
+    db.data.applications[appIdx].approvedAt = new Date().toISOString();
+    await db.write();
 
-    const emp = dbObj.employees.find(e => e.id == dbObj.applications[appIdx].employeeId);
+    const emp = db.data.employees.find(e => e.id == db.data.applications[appIdx].employeeId);
     const email = getEmpEmail(emp);
-    const name = emp?.name || email || `Employee ${dbObj.applications[appIdx].employeeId}`;
+    const name = emp?.name || email || `Employee ${db.data.applications[appIdx].employeeId}`;
     if (email) {
       await sendEmail(
         email,
         'Leave approved',
-        `${name}, your leave from ${dbObj.applications[appIdx].from} to ${dbObj.applications[appIdx].to} has been approved.`
+        `${name}, your leave from ${db.data.applications[appIdx].from} to ${db.data.applications[appIdx].to} has been approved.`
       );
     }
 
-    res.json(dbObj.applications[appIdx]);
+    res.json(db.data.applications[appIdx]);
   });
 
   // ---- REJECT LEAVE ----
   app.patch('/applications/:id/reject', async (req, res) => {
     const { id } = req.params;
     const { approver, remark } = req.body;
-    const dbObj = loadDB();
-    const appIdx = dbObj.applications.findIndex(x => x.id == id);
+    await db.read();
+    const appIdx = db.data.applications.findIndex(x => x.id == id);
     if (appIdx < 0) return res.status(404).json({ error: 'Not found' });
 
-    const app = dbObj.applications[appIdx];
+    const app = db.data.applications[appIdx];
     if (app.status !== 'pending' && app.status !== 'approved')
       return res.status(400).json({ error: 'Already actioned' });
 
     // Credit back balance when rejecting (whether pending or already approved)
-    const empIdx = dbObj.employees.findIndex(x => x.id == app.employeeId);
+    const empIdx = db.data.employees.findIndex(x => x.id == app.employeeId);
     if (empIdx >= 0) {
       let days = app.halfDay ? 0.5 : ((new Date(app.to) - new Date(app.from)) / (1000 * 60 * 60 * 24) + 1);
-      dbObj.employees[empIdx].leaveBalances[app.type] =
-        Number(dbObj.employees[empIdx].leaveBalances[app.type]) + days;
+      db.data.employees[empIdx].leaveBalances[app.type] =
+        Number(db.data.employees[empIdx].leaveBalances[app.type]) + days;
     }
 
-    dbObj.applications[appIdx].status = 'rejected';
-    dbObj.applications[appIdx].approvedBy = approver || '';
-    dbObj.applications[appIdx].approverRemark = remark || '';
-    dbObj.applications[appIdx].approvedAt = new Date().toISOString();
-    saveDB(dbObj);
+    db.data.applications[appIdx].status = 'rejected';
+    db.data.applications[appIdx].approvedBy = approver || '';
+    db.data.applications[appIdx].approverRemark = remark || '';
+    db.data.applications[appIdx].approvedAt = new Date().toISOString();
+    await db.write();
 
-    const emp = dbObj.employees.find(e => e.id == app.employeeId);
+    const emp = db.data.employees.find(e => e.id == app.employeeId);
     const email = getEmpEmail(emp);
     const name = emp?.name || email || `Employee ${app.employeeId}`;
     if (email) {
@@ -360,17 +353,17 @@ init().then(() => {
       );
     }
 
-    res.json(dbObj.applications[appIdx]);
+    res.json(db.data.applications[appIdx]);
   });
 
   // ---- CANCEL LEAVE ----
   app.patch('/applications/:id/cancel', async (req, res) => {
     const { id } = req.params;
-    const dbObj = loadDB();
-    const appIdx = dbObj.applications.findIndex(x => x.id == id);
+    await db.read();
+    const appIdx = db.data.applications.findIndex(x => x.id == id);
     if (appIdx < 0) return res.status(404).json({ error: 'Not found' });
 
-    const appObjApp = dbObj.applications[appIdx];
+    const appObjApp = db.data.applications[appIdx];
     if (['cancelled', 'rejected'].includes(appObjApp.status)) {
       return res.status(400).json({ error: 'Already cancelled/rejected' });
     }
@@ -382,18 +375,18 @@ init().then(() => {
     }
 
     // Credit back balance when cancelling (whether pending or approved)
-    const empIdx = dbObj.employees.findIndex(x => x.id == appObjApp.employeeId);
+    const empIdx = db.data.employees.findIndex(x => x.id == appObjApp.employeeId);
     if (empIdx >= 0) {
       let days = appObjApp.halfDay ? 0.5 : ((new Date(appObjApp.to) - new Date(appObjApp.from)) / (1000 * 60 * 60 * 24) + 1);
-      dbObj.employees[empIdx].leaveBalances[appObjApp.type] =
-        Number(dbObj.employees[empIdx].leaveBalances[appObjApp.type]) + days;
+      db.data.employees[empIdx].leaveBalances[appObjApp.type] =
+        Number(db.data.employees[empIdx].leaveBalances[appObjApp.type]) + days;
     }
 
-    dbObj.applications[appIdx].status = 'cancelled';
-    dbObj.applications[appIdx].cancelledAt = new Date().toISOString();
-    saveDB(dbObj);
+    db.data.applications[appIdx].status = 'cancelled';
+    db.data.applications[appIdx].cancelledAt = new Date().toISOString();
+    await db.write();
 
-    const emp = dbObj.employees.find(e => e.id == appObjApp.employeeId);
+    const emp = db.data.employees.find(e => e.id == appObjApp.employeeId);
     const email = getEmpEmail(emp);
     const name = emp?.name || email || `Employee ${appObjApp.employeeId}`;
     if (email) {
@@ -404,7 +397,7 @@ init().then(() => {
       );
     }
 
-    res.json(dbObj.applications[appIdx]);
+    res.json(db.data.applications[appIdx]);
   });
 
   // (Legacy/optional: PATCH by status field)
