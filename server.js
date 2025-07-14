@@ -230,6 +230,28 @@ init().then(() => {
     res.json(apps);
   });
 
+  // ---- LEAVE REPORT ----
+  app.get('/leave-report', async (req, res) => {
+    await db.read();
+    const emps = db.data.employees || [];
+    const apps = db.data.applications || [];
+
+    const report = emps.map(emp => {
+      const empApps = apps.filter(a => a.employeeId == emp.id && a.status === 'approved');
+      const totals = {};
+      let totalDays = 0;
+      empApps.forEach(a => {
+        const days = getLeaveDays(a);
+        totals[a.type] = (totals[a.type] || 0) + days;
+        totalDays += days;
+      });
+      return { id: emp.id, name: emp.name || '', totalDays, leaves: totals };
+    }).filter(r => r.totalDays > 0);
+
+    report.sort((a, b) => b.totalDays - a.totalDays);
+    res.json(report);
+  });
+
   // ========== LEAVE LOGIC ==========
 
   // Helper: Get leave days (with half day support)

@@ -70,15 +70,18 @@ function showPanel(name) {
   const portalBtn   = document.getElementById('tabPortal');
   const manageBtn   = document.getElementById('tabManage');
   const managerBtn  = document.getElementById('tabManagerApps');
+  const reportBtn   = document.getElementById('tabLeaveReport');
   const portalPanel = document.getElementById('portalPanel');
   const managePanel = document.getElementById('managePanel');
   const managerPanel = document.getElementById('managerAppsPanel');
+  const reportPanel  = document.getElementById('leaveReportPanel');
 
-  [portalBtn, manageBtn, managerBtn].forEach(btn => btn && btn.classList.remove('bg-gray-200'));
+  [portalBtn, manageBtn, managerBtn, reportBtn].forEach(btn => btn && btn.classList.remove('bg-gray-200'));
 
   portalPanel.classList.add('hidden');
   managePanel.classList.add('hidden');
   managerPanel.classList.add('hidden');
+  reportPanel.classList.add('hidden');
 
   if (name === 'portal') {
     portalPanel.classList.remove('hidden');
@@ -93,6 +96,11 @@ function showPanel(name) {
     managerBtn.classList.add('bg-gray-200');
     loadManagerApplications();
   }
+  if (name === 'leaveReport') {
+    reportPanel.classList.remove('hidden');
+    reportBtn.classList.add('bg-gray-200');
+    loadLeaveReport();
+  }
 }
 
 // Role-based tab display
@@ -100,9 +108,11 @@ function toggleTabsByRole() {
   if (currentUser && currentUser.role === 'manager') {
     document.getElementById('tabManage').classList.remove('hidden');
     document.getElementById('tabManagerApps').classList.remove('hidden');
+    document.getElementById('tabLeaveReport').classList.remove('hidden');
   } else {
     document.getElementById('tabManage').classList.add('hidden');
     document.getElementById('tabManagerApps').classList.add('hidden');
+    document.getElementById('tabLeaveReport').classList.add('hidden');
   }
 }
 
@@ -120,6 +130,8 @@ async function init() {
   document.getElementById('tabManage').onclick = () => showPanel('manage');
   const managerTab = document.getElementById('tabManagerApps');
   if (managerTab) managerTab.onclick = () => showPanel('managerApps');
+  const reportTab = document.getElementById('tabLeaveReport');
+  if (reportTab) reportTab.onclick = () => showPanel('leaveReport');
   showPanel('portal');
 
   document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
@@ -654,6 +666,25 @@ async function onEmpTableClick(e) {
   }
   await loadEmployeesManage();
   await loadEmployeesPortal();
+}
+
+// ======== LEAVE REPORT LOGIC ========
+async function loadLeaveReport() {
+  const data = await getJSON('/leave-report');
+  const body = document.getElementById('leaveReportBody');
+  if (!body) return;
+  if (!data.length) {
+    body.innerHTML = '<tr><td colspan="3" class="px-4 py-2 italic text-gray-500">No leave records.</td></tr>';
+    return;
+  }
+  body.innerHTML = data.map(r => {
+    const breakdown = Object.entries(r.leaves).map(([k,v]) => `${capitalize(k)}: ${v}`).join(', ');
+    return `<tr>
+      <td class="px-4 py-2">${r.name}</td>
+      <td class="px-4 py-2 text-center">${r.totalDays}</td>
+      <td class="px-4 py-2">${breakdown}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ---- Drawer logic ----
