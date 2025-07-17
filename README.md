@@ -46,3 +46,16 @@ When the database is empty, you can still log in using a special admin
 account to upload employee data. Configure the credentials with the
 `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables. They default to
 `admin@brillar.io` and `admin`.
+
+## Microsoft SSO
+
+To allow users to sign in using their Office&nbsp;365 account, configure Azure AD
+OAuth credentials with the following environment variables:
+
+- `MS_CLIENT_ID` – Azure application client ID
+- `MS_CLIENT_SECRET` – Azure application client secret
+- `MS_TENANT` – tenant ID (default `common`)
+- `MS_REDIRECT_URI` – callback URL (default
+  `http://localhost:3000/auth/microsoft/callback`)
+
+When enabled, the login page shows a **Sign in with Microsoft&nbsp;365** button.
