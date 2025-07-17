@@ -13,6 +13,13 @@ const app = express();
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@brillar.io';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 
+// ---- MICROSOFT SSO CONFIG ----
+const MS_CLIENT_ID = process.env.MS_CLIENT_ID || '';
+const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || '';
+const MS_TENANT = process.env.MS_TENANT || 'common';
+const MS_REDIRECT_URI = process.env.MS_REDIRECT_URI ||
+  'http://localhost:3000/auth/microsoft/callback';
+
 
 
 
@@ -82,6 +89,66 @@ function managerOnly(req, res, next) {
 }
 
 init().then(() => {
+  // ========== MICROSOFT SSO ==========
+  const oauthStates = new Set();
+
+  app.get('/auth/microsoft', (req, res) => {
+    if (!MS_CLIENT_ID) return res.status(500).send('SSO not configured');
+    const state = genToken();
+    oauthStates.add(state);
+    const authUrl = `https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/authorize` +
+      `?client_id=${encodeURIComponent(MS_CLIENT_ID)}` +
+      `&response_type=code` +
+      `&response_mode=query` +
+      `&redirect_uri=${encodeURIComponent(MS_REDIRECT_URI)}` +
+      `&scope=openid%20profile%20email` +
+      `&state=${state}`;
+    res.redirect(authUrl);
+  });
+
+  app.get('/auth/microsoft/callback', async (req, res) => {
+    const { code, state } = req.query;
+    if (!code || !state || !oauthStates.has(state)) {
+      return res.status(400).send('Invalid auth response');
+    }
+    oauthStates.delete(state);
+    try {
+      const tokenRes = await fetch(`https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: MS_CLIENT_ID,
+          client_secret: MS_CLIENT_SECRET,
+          code,
+          redirect_uri: MS_REDIRECT_URI,
+          grant_type: 'authorization_code',
+          scope: 'openid profile email'
+        })
+      });
+      const tokenData = await tokenRes.json();
+      const idToken = tokenData.id_token;
+      if (!idToken) throw new Error('No id_token');
+      const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64').toString());
+      const email = payload.preferred_username || payload.email || payload.upn;
+      await db.read();
+      let user = db.data.users?.find(u => u.email === email);
+      let userObj;
+      if (user) {
+        userObj = { id: user.id, email: user.email, role: user.role, employeeId: user.employeeId };
+      } else if (email === ADMIN_EMAIL) {
+        userObj = { id: 'admin', email: ADMIN_EMAIL, role: 'manager', employeeId: null };
+      } else {
+        return res.status(401).send('User not found');
+      }
+      const token = genToken();
+      SESSION_TOKENS[token] = userObj.id;
+      const redirect = `/?token=${token}&user=${encodeURIComponent(JSON.stringify(userObj))}`;
+      res.redirect(redirect);
+    } catch (err) {
+      console.error('Microsoft auth failed', err);
+      res.status(500).send('Authentication failed');
+    }
+  });
   // ========== LOGIN ==========
   app.post('/login', async (req, res) => {
     await db.read();

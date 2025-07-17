@@ -3,6 +3,15 @@
 let currentUser = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('token')) {
+    localStorage.setItem('brillar_token', params.get('token'));
+    try {
+      currentUser = JSON.parse(decodeURIComponent(params.get('user')));
+      localStorage.setItem('brillar_user', JSON.stringify(currentUser));
+    } catch {}
+    window.history.replaceState({}, document.title, '/');
+  }
   if (!localStorage.getItem('brillar_token')) {
     document.getElementById('loginPage').classList.remove('hidden');
     document.getElementById('logoutBtn').classList.add('hidden');
@@ -47,6 +56,12 @@ document.getElementById('loginForm').onsubmit = async function(ev) {
     document.getElementById('loginError').textContent = 'Invalid email or password';
     document.getElementById('loginError').classList.remove('hidden');
   }
+};
+
+// Microsoft SSO button
+const msBtn = document.getElementById('msLoginBtn');
+if (msBtn) msBtn.onclick = () => {
+  window.location.href = '/auth/microsoft';
 };
 
 // Logout logic
