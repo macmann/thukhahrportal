@@ -870,9 +870,9 @@ async function onEmpFormSubmit(ev) {
 // -------- Calendar View ---------
 async function loadLeaveCalendar() {
   const monthStart = new Date(calendarCurrent.getFullYear(), calendarCurrent.getMonth(), 1);
-  const monthEnd = new Date(calendarCurrent.getFullYear(), calendarCurrent.getMonth() + 1, 0);
-  const startStr = monthStart.toISOString().substring(0,10);
-  const endStr = monthEnd.toISOString().substring(0,10);
+  const monthEnd   = new Date(calendarCurrent.getFullYear(), calendarCurrent.getMonth() + 1, 0);
+  const startStr   = monthStart.toLocaleDateString('en-CA');
+  const endStr     = monthEnd.toLocaleDateString('en-CA');
   const data = await getJSON(`/leave-calendar?start=${startStr}&end=${endStr}`);
   const map = {};
   data.forEach(d => { map[d.date] = d.entries; });
@@ -882,20 +882,30 @@ async function loadLeaveCalendar() {
   grid.innerHTML = '';
   const firstDay = new Date(monthStart);
   const offset = firstDay.getDay();
-  for (let i=0;i<offset;i++) {
+  for (let i = 0; i < offset; i++) {
     grid.innerHTML += '<div class="bg-white h-24"></div>';
   }
   const today = new Date();
   for (let d=1; d<=monthEnd.getDate(); d++) {
-    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), d);
-    const dateStr = date.toISOString().substring(0,10);
+    const date   = new Date(monthStart.getFullYear(), monthStart.getMonth(), d);
+    const dateStr = date.toLocaleDateString('en-CA');
     const entries = map[dateStr] || [];
-    const future = date > today;
-    const classes = ['bg-white','h-24','p-1','relative'];
+    const future  = date > today;
+    const classes = ['h-24','p-1','relative','cursor-default','hover:cursor-pointer'];
+    if ([1,2,3,4,5].includes(date.getDay())) {
+      classes.push('bg-blue-50');
+    } else {
+      classes.push('bg-white');
+    }
     if (future) classes.push('text-gray-400');
-    let title = entries.map(e => `${e.name} - ${capitalize(e.type)}`).join('\n');
-    if (!title) title = '';
-    grid.innerHTML += `<div class="${classes.join(' ')}" title="${title}"><div>${d}</div></div>`;
+    const names = entries.map(e => e.name).join(', ');
+    const short = names.length > 25 ? names.substring(0,22) + '...' : names;
+    let content = `<div>${d}</div>`;
+    if (names) {
+      content += `<div class="text-xs truncate" title="${names}">${short}</div>`;
+    }
+    const title = entries.map(e => `${e.name} - ${capitalize(e.type)}`).join('\n');
+    grid.innerHTML += `<div class="${classes.join(' ')}" title="${title}">${content}</div>`;
   }
 }
 
