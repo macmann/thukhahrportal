@@ -264,19 +264,6 @@
             <tbody id="leaveReportBody"></tbody>
           </table>
         </div>
-        <div class="flex flex-wrap items-end gap-2 my-4">
-          <label class="flex flex-col">
-            <span class="text-sm font-semibold mb-1">Start</span>
-            <input type="date" id="reportStart" class="p-2 border rounded">
-          </label>
-          <label class="flex flex-col">
-            <span class="text-sm font-semibold mb-1">End</span>
-            <input type="date" id="reportEnd" class="p-2 border rounded">
-          </label>
-          <button id="reportApply" class="bg-green-600 text-white px-4 py-2 rounded">Apply</button>
-          <button id="reportWeek" class="bg-gray-200 px-3 py-2 rounded">Past Week</button>
-          <button id="reportMonth" class="bg-gray-200 px-3 py-2 rounded">Past 30 Days</button>
-        </div>
         <div id="calendarSection" class="my-6">
           <div class="flex items-center justify-between mb-2">
             <button id="calPrev" class="px-3 py-1 bg-gray-200 rounded">Prev</button>
@@ -293,6 +280,19 @@
             <div class="bg-gray-100 py-1">Sat</div>
           </div>
           <div id="leaveCalendar" class="grid grid-cols-7 gap-px bg-gray-300 text-center"></div>
+        </div>
+        <div class="flex flex-wrap items-end gap-2 my-4">
+          <label class="flex flex-col">
+            <span class="text-sm font-semibold mb-1">Start</span>
+            <input type="date" id="reportStart" class="p-2 border rounded">
+          </label>
+          <label class="flex flex-col">
+            <span class="text-sm font-semibold mb-1">End</span>
+            <input type="date" id="reportEnd" class="p-2 border rounded">
+          </label>
+          <button id="reportApply" class="bg-green-600 text-white px-4 py-2 rounded">Apply</button>
+          <button id="reportWeek" class="bg-gray-200 px-3 py-2 rounded">Past Week</button>
+          <button id="reportMonth" class="bg-gray-200 px-3 py-2 rounded">Past 30 Days</button>
         </div>
         <div id="leaveRangeCards" class="mt-6 flex flex-wrap gap-4"></div>
       </div>
