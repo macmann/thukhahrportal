@@ -394,6 +394,32 @@ init().then(() => {
     res.send(csv);
   });
 
+  // ---- LEAVE CALENDAR DATA ----
+  app.get('/leave-calendar', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const { start, end } = req.query;
+    const startDate = start ? new Date(start) : null;
+    const endDate = end ? new Date(end) : null;
+    const emps = db.data.employees || [];
+    const apps = (db.data.applications || []).filter(a => a.status === 'approved');
+    const map = {};
+    for (const app of apps) {
+      const emp = emps.find(e => e.id == app.employeeId) || {};
+      const name = emp.name || '';
+      const startD = new Date(app.from);
+      const endD = new Date(app.to);
+      for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+        if (startDate && d < startDate) continue;
+        if (endDate && d > endDate) continue;
+        const dateStr = d.toISOString().split('T')[0];
+        if (!map[dateStr]) map[dateStr] = [];
+        map[dateStr].push({ name, type: app.type });
+      }
+    }
+    const result = Object.entries(map).map(([date, entries]) => ({ date, entries }));
+    res.json(result);
+  });
+
   // ========== LEAVE LOGIC ==========
 
   // Helper: Get leave days (with half day support)

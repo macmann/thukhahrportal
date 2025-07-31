@@ -1,6 +1,7 @@
 // public/index.js
 
 let currentUser = null;
+let calendarCurrent = new Date();
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
@@ -122,6 +123,8 @@ function showPanel(name) {
     reportPanel.classList.remove('hidden');
     reportBtn.classList.add('bg-gray-200');
     loadLeaveReport();
+    calendarCurrent = new Date();
+    loadLeaveCalendar();
     const cards = document.getElementById('leaveRangeCards');
     if (cards) cards.innerHTML = '';
   }
@@ -863,3 +866,44 @@ async function onEmpFormSubmit(ev) {
   await loadEmployeesManage();
   await loadEmployeesPortal();
 }
+
+// -------- Calendar View ---------
+async function loadLeaveCalendar() {
+  const monthStart = new Date(calendarCurrent.getFullYear(), calendarCurrent.getMonth(), 1);
+  const monthEnd = new Date(calendarCurrent.getFullYear(), calendarCurrent.getMonth() + 1, 0);
+  const startStr = monthStart.toISOString().substring(0,10);
+  const endStr = monthEnd.toISOString().substring(0,10);
+  const data = await getJSON(`/leave-calendar?start=${startStr}&end=${endStr}`);
+  const map = {};
+  data.forEach(d => { map[d.date] = d.entries; });
+  const grid = document.getElementById('leaveCalendar');
+  if (!grid) return;
+  document.getElementById('calMonth').textContent = monthStart.toLocaleString('default', {month:'long', year:'numeric'});
+  grid.innerHTML = '';
+  const firstDay = new Date(monthStart);
+  const offset = firstDay.getDay();
+  for (let i=0;i<offset;i++) {
+    grid.innerHTML += '<div class="bg-white h-24"></div>';
+  }
+  const today = new Date();
+  for (let d=1; d<=monthEnd.getDate(); d++) {
+    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), d);
+    const dateStr = date.toISOString().substring(0,10);
+    const entries = map[dateStr] || [];
+    const future = date > today;
+    const classes = ['bg-white','h-24','p-1','relative'];
+    if (future) classes.push('text-gray-400');
+    let title = entries.map(e => `${e.name} - ${capitalize(e.type)}`).join('\n');
+    if (!title) title = '';
+    grid.innerHTML += `<div class="${classes.join(' ')}" title="${title}"><div>${d}</div></div>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const prev = document.getElementById('calPrev');
+  const next = document.getElementById('calNext');
+  if (prev && next) {
+    prev.onclick = () => { calendarCurrent.setMonth(calendarCurrent.getMonth()-1); loadLeaveCalendar(); };
+    next.onclick = () => { calendarCurrent.setMonth(calendarCurrent.getMonth()+1); loadLeaveCalendar(); };
+  }
+});

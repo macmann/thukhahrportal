@@ -252,7 +252,19 @@
         <div class="mb-4">
           <button id="exportLeavesBtn" class="bg-blue-500 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-600 transition">Export Leaves</button>
         </div>
-        <div class="flex flex-wrap items-end gap-2 mb-4">
+        <div class="overflow-x-auto" style="overflow-x:auto;">
+          <table id="leaveReportTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
+            <thead>
+              <tr>
+                <th class="px-4 py-2 font-medium bg-gray-50">Name</th>
+                <th class="px-4 py-2 font-medium bg-gray-50">Total Days</th>
+                <th class="px-4 py-2 font-medium bg-gray-50">Breakdown</th>
+              </tr>
+            </thead>
+            <tbody id="leaveReportBody"></tbody>
+          </table>
+        </div>
+        <div class="flex flex-wrap items-end gap-2 my-4">
           <label class="flex flex-col">
             <span class="text-sm font-semibold mb-1">Start</span>
             <input type="date" id="reportStart" class="p-2 border rounded">
@@ -265,17 +277,13 @@
           <button id="reportWeek" class="bg-gray-200 px-3 py-2 rounded">Past Week</button>
           <button id="reportMonth" class="bg-gray-200 px-3 py-2 rounded">Past 30 Days</button>
         </div>
-        <div class="overflow-x-auto" style="overflow-x:auto;">
-          <table id="leaveReportTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
-            <thead>
-              <tr>
-                <th class="px-4 py-2 font-medium bg-gray-50">Name</th>
-                <th class="px-4 py-2 font-medium bg-gray-50">Total Days</th>
-                <th class="px-4 py-2 font-medium bg-gray-50">Breakdown</th>
-              </tr>
-            </thead>
-            <tbody id="leaveReportBody"></tbody>
-          </table>
+        <div id="calendarSection" class="my-6">
+          <div class="flex items-center justify-between mb-2">
+            <button id="calPrev" class="px-3 py-1 bg-gray-200 rounded">Prev</button>
+            <h3 id="calMonth" class="font-semibold text-lg"></h3>
+            <button id="calNext" class="px-3 py-1 bg-gray-200 rounded">Next</button>
+          </div>
+          <div id="leaveCalendar" class="grid grid-cols-7 gap-px bg-gray-300 text-center"></div>
         </div>
         <div id="leaveRangeCards" class="mt-6 flex flex-wrap gap-4"></div>
       </div>
