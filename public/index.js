@@ -122,6 +122,8 @@ function showPanel(name) {
     reportPanel.classList.remove('hidden');
     reportBtn.classList.add('bg-gray-200');
     loadLeaveReport();
+    const cards = document.getElementById('leaveRangeCards');
+    if (cards) cards.innerHTML = '';
   }
 }
 
@@ -184,6 +186,36 @@ async function init() {
   if (exportBtn) {
     exportBtn.onclick = () => {
       window.open(API + '/leave-report/export', '_blank');
+    };
+  }
+  const reportApply = document.getElementById('reportApply');
+  const reportWeek = document.getElementById('reportWeek');
+  const reportMonth = document.getElementById('reportMonth');
+  if (reportApply) {
+    reportApply.onclick = () => {
+      const s = document.getElementById('reportStart').value;
+      const e = document.getElementById('reportEnd').value;
+      loadLeaveRange(s, e);
+    };
+  }
+  if (reportWeek) {
+    reportWeek.onclick = () => {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 7);
+      document.getElementById('reportStart').value = start.toISOString().substring(0,10);
+      document.getElementById('reportEnd').value = end.toISOString().substring(0,10);
+      loadLeaveRange(document.getElementById('reportStart').value, document.getElementById('reportEnd').value);
+    };
+  }
+  if (reportMonth) {
+    reportMonth.onclick = () => {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 30);
+      document.getElementById('reportStart').value = start.toISOString().substring(0,10);
+      document.getElementById('reportEnd').value = end.toISOString().substring(0,10);
+      loadLeaveRange(document.getElementById('reportStart').value, document.getElementById('reportEnd').value);
     };
   }
   document.getElementById('drawerCancelBtn').onclick = closeEmpDrawer;
@@ -710,6 +742,28 @@ async function loadLeaveReport() {
       <td class="px-4 py-2 text-center">${r.totalDays}</td>
       <td class="px-4 py-2">${breakdown}</td>
     </tr>`;
+  }).join('');
+}
+
+async function loadLeaveRange(start, end) {
+  const params = [];
+  if (start) params.push('start=' + start);
+  if (end) params.push('end=' + end);
+  const query = params.length ? '?' + params.join('&') : '';
+  const data = await getJSON('/leave-report' + query);
+  const container = document.getElementById('leaveRangeCards');
+  if (!container) return;
+  if (!data.length) {
+    container.innerHTML = '<div class="text-gray-500 italic">No leaves in this period.</div>';
+    return;
+  }
+  container.innerHTML = data.map(r => {
+    const breakdown = Object.entries(r.leaves).map(([k,v]) => `${capitalize(k)}: ${v}`).join(', ');
+    return `<div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 w-64">
+      <div class="font-semibold mb-1">${r.name}</div>
+      <div class="mb-1 text-gray-700"><b>Total:</b> ${r.totalDays}</div>
+      <div class="text-gray-700"><b>Breakdown:</b> ${breakdown}</div>
+    </div>`;
   }).join('');
 }
 
