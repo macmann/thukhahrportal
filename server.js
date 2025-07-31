@@ -322,15 +322,28 @@ init().then(() => {
   // ---- LEAVE REPORT ----
   app.get('/leave-report', authRequired, managerOnly, async (req, res) => {
     await db.read();
+    const { start, end } = req.query;
+    const startDate = start ? new Date(start) : null;
+    const endDate = end ? new Date(end) : null;
     const emps = db.data.employees || [];
     const apps = db.data.applications || [];
 
     const report = emps.map(emp => {
-      const empApps = apps.filter(a => a.employeeId == emp.id && a.status === 'approved');
+      let empApps = apps.filter(a => a.employeeId == emp.id && a.status === 'approved');
+      if (startDate || endDate) {
+        empApps = empApps.filter(a => {
+          const from = new Date(a.from);
+          const to = new Date(a.to);
+          if (startDate && to < startDate) return false;
+          if (endDate && from > endDate) return false;
+          return true;
+        });
+      }
       const totals = {};
       let totalDays = 0;
       empApps.forEach(a => {
-        const days = getLeaveDays(a);
+        const days = startDate || endDate ? getLeaveDaysInRange(a, startDate, endDate) : getLeaveDays(a);
+        if (days <= 0) return;
         totals[a.type] = (totals[a.type] || 0) + days;
         totalDays += days;
       });
@@ -389,6 +402,21 @@ init().then(() => {
     return (
       (new Date(app.to) - new Date(app.from)) / (1000 * 60 * 60 * 24) + 1
     );
+  }
+
+  function getLeaveDaysInRange(app, startDate, endDate) {
+    if (!startDate && !endDate) return getLeaveDays(app);
+    const from = new Date(app.from);
+    const to = new Date(app.to);
+    const start = startDate && from < startDate ? new Date(startDate) : from;
+    const end = endDate && to > endDate ? new Date(endDate) : to;
+    if (app.halfDay) {
+      if (startDate && from < startDate) return 0;
+      if (endDate && from > endDate) return 0;
+      return 0.5;
+    }
+    if (end < start) return 0;
+    return (end - start) / (1000 * 60 * 60 * 24) + 1;
   }
 
   // ---- APPLY FOR LEAVE ----

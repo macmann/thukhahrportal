@@ -252,6 +252,19 @@
         <div class="mb-4">
           <button id="exportLeavesBtn" class="bg-blue-500 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-600 transition">Export Leaves</button>
         </div>
+        <div class="flex flex-wrap items-end gap-2 mb-4">
+          <label class="flex flex-col">
+            <span class="text-sm font-semibold mb-1">Start</span>
+            <input type="date" id="reportStart" class="p-2 border rounded">
+          </label>
+          <label class="flex flex-col">
+            <span class="text-sm font-semibold mb-1">End</span>
+            <input type="date" id="reportEnd" class="p-2 border rounded">
+          </label>
+          <button id="reportApply" class="bg-green-600 text-white px-4 py-2 rounded">Apply</button>
+          <button id="reportWeek" class="bg-gray-200 px-3 py-2 rounded">Past Week</button>
+          <button id="reportMonth" class="bg-gray-200 px-3 py-2 rounded">Past 30 Days</button>
+        </div>
         <div class="overflow-x-auto" style="overflow-x:auto;">
           <table id="leaveReportTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
             <thead>
@@ -264,6 +277,7 @@
             <tbody id="leaveReportBody"></tbody>
           </table>
         </div>
+        <div id="leaveRangeCards" class="mt-6 flex flex-wrap gap-4"></div>
       </div>
       <!-- ============== END LEAVE REPORT PANEL ================= -->
 
