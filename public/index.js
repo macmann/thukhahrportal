@@ -187,8 +187,22 @@ async function init() {
   }
   const exportBtn = document.getElementById('exportLeavesBtn');
   if (exportBtn) {
-    exportBtn.onclick = () => {
-      window.open(API + '/leave-report/export', '_blank');
+    exportBtn.onclick = async () => {
+      try {
+        const res = await apiFetch('/leave-report/export');
+        if (!res.ok) throw new Error('Export failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'leave-report.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('Failed to export leave report');
+      }
     };
   }
   const reportApply = document.getElementById('reportApply');
