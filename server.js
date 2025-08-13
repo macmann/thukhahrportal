@@ -347,7 +347,14 @@ init().then(() => {
         totals[a.type] = (totals[a.type] || 0) + days;
         totalDays += days;
       });
-      return { id: emp.id, name: emp.name || '', totalDays, leaves: totals };
+      return {
+        id: emp.id,
+        name: emp.name || '',
+        title: emp.Title || emp.title || '',
+        location: emp['Country / City'] || emp.location || emp['country/city'] || '',
+        totalDays,
+        leaves: totals
+      };
     }).filter(r => r.totalDays > 0);
 
     report.sort((a, b) => b.totalDays - a.totalDays);

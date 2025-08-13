@@ -735,13 +735,15 @@ async function loadLeaveReport() {
   const body = document.getElementById('leaveReportBody');
   if (!body) return;
   if (!data.length) {
-    body.innerHTML = '<tr><td colspan="3" class="px-4 py-2 italic text-gray-500">No leave records.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="px-4 py-2 italic text-gray-500">No leave records.</td></tr>';
     return;
   }
   body.innerHTML = data.map(r => {
     const breakdown = Object.entries(r.leaves).map(([k,v]) => `${capitalize(k)}: ${v}`).join(', ');
     return `<tr>
       <td class="px-4 py-2">${r.name}</td>
+      <td class="px-4 py-2">${r.title || ''}</td>
+      <td class="px-4 py-2">${r.location || ''}</td>
       <td class="px-4 py-2 text-center">${r.totalDays}</td>
       <td class="px-4 py-2">${breakdown}</td>
     </tr>`;
@@ -764,6 +766,8 @@ async function loadLeaveRange(start, end) {
     const breakdown = Object.entries(r.leaves).map(([k,v]) => `${capitalize(k)}: ${v}`).join(', ');
     return `<div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 w-64">
       <div class="font-semibold mb-1">${r.name}</div>
+      <div class="text-gray-700 mb-1"><b>Title:</b> ${r.title || ''}</div>
+      <div class="text-gray-700 mb-1"><b>Location:</b> ${r.location || ''}</div>
       <div class="mb-1 text-gray-700"><b>Total:</b> ${r.totalDays}</div>
       <div class="text-gray-700"><b>Breakdown:</b> ${breakdown}</div>
     </div>`;
