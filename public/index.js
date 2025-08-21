@@ -2,6 +2,7 @@
 
 let currentUser = null;
 let calendarCurrent = new Date();
+let empFilters = {};
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
@@ -666,6 +667,7 @@ async function loadEmployeesManage() {
     return;
   }
 
+  let noKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'no');
   let nameKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'name');
   let statusKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'status');
   // Exclude id, name, status, leaveBalances, no from dynamic keys
@@ -678,21 +680,48 @@ async function loadEmployeesManage() {
       k.toLowerCase() !== 'no'
   );
 
+  // Apply filters
+  const filtered = emps.filter(emp => {
+    return Object.entries(empFilters).every(([k, val]) => {
+      if (!val) return true;
+      const empVal = String(emp[k] ?? '').toLowerCase();
+      return empVal.includes(val.toLowerCase());
+    });
+  });
+
   // Table header
   head.innerHTML = '<tr>' +
-    `<th class="sticky-col no-col px-4 py-2 font-medium bg-gray-50">No</th>` +             // No col (sticky)
-    `<th class="sticky-col name-col px-4 py-2 font-medium bg-gray-50">Name</th>` +         // Name col (sticky)
+    `<th class="sticky-col no-col px-4 py-2 font-medium bg-gray-50">No</th>` +
+    `<th class="sticky-col name-col px-4 py-2 font-medium bg-gray-50">Name</th>` +
     `<th class="px-4 py-2 font-medium bg-gray-50">Status</th>` +
     keys.map(k => `<th class="px-4 py-2 font-medium bg-gray-50">${k.charAt(0).toUpperCase() + k.slice(1)}</th>`).join('') +
-    `<th class="sticky-col actions-col px-4 py-2 font-medium bg-gray-50">Actions</th>` +   // Actions (sticky right)
+    `<th class="sticky-col actions-col px-4 py-2 font-medium bg-gray-50">Actions</th>` +
     '</tr>';
 
-  emps.forEach((emp, idx) => {
+  // Filter row
+  const filterRow = document.createElement('tr');
+  filterRow.innerHTML =
+    `<th class="sticky-col no-col px-4 py-2 bg-gray-50"><input type="text" data-key="${noKey}" class="w-full border px-2 py-1 text-sm" /></th>` +
+    `<th class="sticky-col name-col px-4 py-2 bg-gray-50"><input type="text" data-key="${nameKey}" class="w-full border px-2 py-1 text-sm" /></th>` +
+    `<th class="px-4 py-2 bg-gray-50"><input type="text" data-key="${statusKey}" class="w-full border px-2 py-1 text-sm" /></th>` +
+    keys.map(k => `<th class="px-4 py-2 bg-gray-50"><input type="text" data-key="${k}" class="w-full border px-2 py-1 text-sm" /></th>`).join('') +
+    `<th class="sticky-col actions-col px-4 py-2 bg-gray-50"></th>`;
+  head.appendChild(filterRow);
+  filterRow.querySelectorAll('input').forEach(inp => {
+    const k = inp.dataset.key;
+    inp.value = empFilters[k] || '';
+    inp.oninput = () => {
+      empFilters[k] = inp.value;
+      loadEmployeesManage();
+    };
+  });
+
+  filtered.forEach((emp, idx) => {
     body.innerHTML += `<tr>
-      <td class="sticky-col no-col px-4 py-2 bg-white">${idx + 1}</td>
+      <td class="sticky-col no-col px-4 py-2 bg-white">${emp[noKey] ?? idx + 1}</td>
       <td class="sticky-col name-col px-4 py-2 bg-white">${emp[nameKey] ?? ''}</td>
       <td class="px-4 py-2">
-        <span class="inline-block rounded-full px-3 py-1 text-xs font-bold 
+        <span class="inline-block rounded-full px-3 py-1 text-xs font-bold
           ${emp[statusKey] === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
           ${emp[statusKey]}
         </span>
