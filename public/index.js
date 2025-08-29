@@ -670,6 +670,7 @@ async function loadEmployeesManage() {
   let noKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'no');
   let nameKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'name');
   let statusKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'status');
+  let roleKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'role');
   // Exclude id, name, status, leaveBalances, no from dynamic keys
   let keys = Object.keys(emps[0]).filter(
     k =>
@@ -687,6 +688,17 @@ async function loadEmployeesManage() {
       const empVal = String(emp[k] ?? '').toLowerCase();
       return empVal.includes(val.toLowerCase());
     });
+  });
+
+  // Sort managers first by name, then remaining employees by name A-Z
+  filtered.sort((a, b) => {
+    const roleA = roleKey ? (a[roleKey] || '').toLowerCase() : '';
+    const roleB = roleKey ? (b[roleKey] || '').toLowerCase() : '';
+    const nameA = (a[nameKey] || '').toLowerCase();
+    const nameB = (b[nameKey] || '').toLowerCase();
+    if (roleA === 'manager' && roleB !== 'manager') return -1;
+    if (roleA !== 'manager' && roleB === 'manager') return 1;
+    return nameA.localeCompare(nameB);
   });
 
   // Table header
