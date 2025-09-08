@@ -408,11 +408,10 @@ function renderPreviousLeaves(apps, emp) {
   }
   const typeIcon = { annual: '🌴', casual: '🏖️', medical: '🏥' };
   container.innerHTML = apps.sort((a,b)=>new Date(b.from)-new Date(a.from)).map(app => {
-    let days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    let days = calculateLeaveDays(app.from, app.to, app.halfDay);
     let daysText = days;
     let typeLabel = capitalize(app.type) + ' Leave';
     if (app.halfDay) {
-      daysText = '0.5';
       typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
     }
     return `
@@ -442,6 +441,21 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+function calculateLeaveDays(from, to, halfDay) {
+  const start = new Date(from);
+  const end = new Date(to);
+  if (halfDay) {
+    const day = start.getDay();
+    return (day === 0 || day === 6) ? 0 : 0.5;
+  }
+  let days = 0;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const day = d.getDay();
+    if (day !== 0 && day !== 6) days++;
+  }
+  return days;
+}
+
 // ========== MANAGER LEAVE APPLICATIONS TAB LOGIC ==========
 
 async function loadManagerApplications() {
@@ -454,11 +468,10 @@ async function loadManagerApplications() {
   } else {
     list.innerHTML = apps.map(app => {
       const emp = emps.find(e => e.id == app.employeeId);
-      let days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+      let days = calculateLeaveDays(app.from, app.to, app.halfDay);
       let daysText = days;
       let typeLabel = capitalize(app.type) + ' Leave';
       if (app.halfDay) {
-        daysText = '0.5';
         typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
       }
       // Calculate cancel eligibility: current date before "from" date
@@ -576,11 +589,10 @@ async function loadManagerUpcomingLeaves(showCancel = false) {
 
   list.innerHTML = filtered.sort((a, b) => new Date(a.from) - new Date(b.from)).map(app => {
     const emp = emps.find(e => e.id == app.employeeId);
-    let days = (new Date(app.to) - new Date(app.from)) / (1000*60*60*24) + 1;
+    let days = calculateLeaveDays(app.from, app.to, app.halfDay);
     let daysText = days;
     let typeLabel = capitalize(app.type) + ' Leave';
     if (app.halfDay) {
-      daysText = '0.5';
       typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
     }
     // Show cancel if approved leave in future
