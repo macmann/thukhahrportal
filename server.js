@@ -431,10 +431,17 @@ init().then(() => {
 
   // Helper: Get leave days (with half day support)
   function getLeaveDays(app) {
-    if (app.halfDay) return 0.5;
-    return (
-      (new Date(app.to) - new Date(app.from)) / (1000 * 60 * 60 * 24) + 1
-    );
+    const from = new Date(app.from);
+    const to = new Date(app.to);
+    if (app.halfDay) {
+      return (from.getDay() === 0 || from.getDay() === 6) ? 0 : 0.5;
+    }
+    let days = 0;
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      const day = d.getDay();
+      if (day !== 0 && day !== 6) days++;
+    }
+    return days;
   }
 
   function getLeaveDaysInRange(app, startDate, endDate) {
@@ -446,10 +453,15 @@ init().then(() => {
     if (app.halfDay) {
       if (startDate && from < startDate) return 0;
       if (endDate && from > endDate) return 0;
-      return 0.5;
+      return (from.getDay() === 0 || from.getDay() === 6) ? 0 : 0.5;
     }
     if (end < start) return 0;
-    return (end - start) / (1000 * 60 * 60 * 24) + 1;
+    let days = 0;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const day = d.getDay();
+      if (day !== 0 && day !== 6) days++;
+    }
+    return days;
   }
 
   // ---- APPLY FOR LEAVE ----
@@ -475,7 +487,7 @@ init().then(() => {
     const emp = db.data.employees.find(e => e.id == employeeId);
     if (emp && emp.leaveBalances[type] !== undefined) {
       let bal = Number(emp.leaveBalances[type]) || 0;
-      let days = halfDay ? 0.5 : ((new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24) + 1);
+      let days = getLeaveDays(newApp);
       if (bal < days) {
         return res.status(400).json({ error: 'Insufficient leave balance.' });
       }
@@ -546,7 +558,7 @@ init().then(() => {
     // Credit back balance when rejecting (whether pending or already approved)
     const empIdx = db.data.employees.findIndex(x => x.id == app.employeeId);
     if (empIdx >= 0) {
-      let days = app.halfDay ? 0.5 : ((new Date(app.to) - new Date(app.from)) / (1000 * 60 * 60 * 24) + 1);
+      let days = getLeaveDays(app);
       db.data.employees[empIdx].leaveBalances[app.type] =
         Number(db.data.employees[empIdx].leaveBalances[app.type]) + days;
     }
@@ -596,7 +608,7 @@ init().then(() => {
     // Credit back balance when cancelling (whether pending or approved)
     const empIdx = db.data.employees.findIndex(x => x.id == appObjApp.employeeId);
     if (empIdx >= 0) {
-      let days = appObjApp.halfDay ? 0.5 : ((new Date(appObjApp.to) - new Date(appObjApp.from)) / (1000 * 60 * 60 * 24) + 1);
+      let days = getLeaveDays(appObjApp);
       db.data.employees[empIdx].leaveBalances[appObjApp.type] =
         Number(db.data.employees[empIdx].leaveBalances[appObjApp.type]) + days;
     }
@@ -630,7 +642,7 @@ init().then(() => {
       // Credit back leave
       const emp = db.data.employees.find(e => e.id == app.employeeId);
       if (emp && emp.leaveBalances[app.type] !== undefined) {
-        let days = app.halfDay ? 0.5 : ((new Date(app.to) - new Date(app.from)) / (1000 * 60 * 60 * 24) + 1);
+        let days = getLeaveDays(app);
         emp.leaveBalances[app.type] = (+emp.leaveBalances[app.type] || 0) + days;
       }
     }
