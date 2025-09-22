@@ -984,11 +984,13 @@ async function loadLeaveCalendar() {
       classes.push('weekday');
     }
     if (future) classes.push('future');
-    const names = entries.map(e => e.name).join(', ');
-    const short = names.length > 25 ? names.substring(0,22) + '...' : names;
     let content = `<div class="calendar-date">${d}</div>`;
-    if (names) {
-      content += `<div class="calendar-names" title="${names}">${short}</div>`;
+    if (entries.length) {
+      const namesMarkup = entries.map(e => {
+        const typeLabel = capitalize(e.type);
+        return `<div class="calendar-name" title="${e.name} • ${typeLabel}">${e.name}</div>`;
+      }).join('');
+      content += `<div class="calendar-names">${namesMarkup}</div>`;
     }
     const title = entries.map(e => `${e.name} - ${capitalize(e.type)}`).join('\n');
     grid.innerHTML += `<div class="${classes.join(' ')}" title="${title}">${content}</div>`;
