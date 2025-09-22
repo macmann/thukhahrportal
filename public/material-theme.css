@@ -324,6 +324,27 @@ body {
   gap: 12px;
 }
 
+.app-actions #changePassBtn {
+  background: linear-gradient(135deg, #7c3aed, #4c1d95);
+  color: #fff;
+  border: none;
+  box-shadow: 0 14px 32px -18px rgba(79, 70, 229, 0.65);
+}
+
+.app-actions #changePassBtn:hover {
+  box-shadow: 0 18px 36px -18px rgba(79, 70, 229, 0.75);
+}
+
+.app-actions #logoutBtn {
+  background: rgba(254, 226, 226, 0.85);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #b91c1c;
+}
+
+.app-actions #logoutBtn:hover {
+  background: rgba(254, 202, 202, 0.95);
+}
+
 .tab-bar {
   display: flex;
   gap: 12px;
@@ -933,8 +954,22 @@ body {
   color: rgba(71, 85, 105, 0.6);
 }
 
+.calendar-grid div.future .calendar-employee {
+  color: rgba(71, 85, 105, 0.7);
+}
+
+.calendar-grid div.future .calendar-type {
+  opacity: 0.75;
+}
+
 .calendar-grid div.weekday {
   background: rgba(219, 226, 255, 0.6);
+}
+
+.calendar-grid div.calendar-today {
+  background: rgba(191, 219, 254, 0.8);
+  border: 2px solid rgba(37, 99, 235, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.2);
 }
 
 .calendar-empty {
@@ -945,6 +980,7 @@ body {
 .calendar-date {
   font-weight: 700;
   font-size: 0.95rem;
+  color: #1d4ed8;
 }
 
 .calendar-names {
@@ -963,9 +999,65 @@ body {
   padding: 2px 6px;
   border-radius: 6px;
   background: rgba(99, 102, 241, 0.12);
-  color: rgba(30, 41, 59, 0.85);
   line-height: 1.2;
   word-break: break-word;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.calendar-employee {
+  color: rgba(30, 41, 59, 0.88);
+  font-weight: 600;
+}
+
+.calendar-type {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(59, 130, 246, 0.16);
+  color: #1d4ed8;
+}
+
+.calendar-type--annual {
+  background: rgba(59, 130, 246, 0.18);
+  color: #1d4ed8;
+}
+
+.calendar-type--casual {
+  background: rgba(251, 191, 36, 0.22);
+  color: #b45309;
+}
+
+.calendar-type--medical {
+  background: rgba(134, 239, 172, 0.24);
+  color: #15803d;
+}
+
+.calendar-type--unpaid {
+  background: rgba(244, 114, 182, 0.2);
+  color: #be185d;
+}
+
+.calendar-type--maternity {
+  background: rgba(236, 72, 153, 0.18);
+  color: #be185d;
+}
+
+.calendar-type--paternity {
+  background: rgba(129, 140, 248, 0.22);
+  color: #4338ca;
+}
+
+.calendar-type--other {
+  background: rgba(203, 213, 225, 0.4);
+  color: #334155;
 }
 
 .range-actions {

@@ -982,26 +982,43 @@ async function loadLeaveCalendar() {
     grid.innerHTML += '<div class="calendar-empty"></div>';
   }
   const today = new Date();
+  today.setHours(0,0,0,0);
   for (let d=1; d<=monthEnd.getDate(); d++) {
     const date   = new Date(monthStart.getFullYear(), monthStart.getMonth(), d);
+    const dayRef = new Date(date);
+    dayRef.setHours(0,0,0,0);
     const dateStr = date.toLocaleDateString('en-CA');
     const entries = map[dateStr] || [];
-    const future  = date > today;
+    const future  = dayRef > today;
+    const isToday = dayRef.getTime() === today.getTime();
     const classes = [];
     if ([1,2,3,4,5].includes(date.getDay())) {
       classes.push('weekday');
     }
     if (future) classes.push('future');
+    if (isToday) classes.push('calendar-today');
     let content = `<div class="calendar-date">${d}</div>`;
+    const titleParts = [];
     if (entries.length) {
       const namesMarkup = entries.map(e => {
-        const typeLabel = capitalize(e.type);
-        return `<div class="calendar-name" title="${e.name} • ${typeLabel}">${e.name}</div>`;
+        const rawType = (e.type || '').toString();
+        const typeLabel = capitalize(rawType);
+        const typeKey = rawType.replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const typeClass = typeKey ? `calendar-type--${typeKey}` : '';
+        if (typeLabel) {
+          titleParts.push(`${e.name} - ${typeLabel}`);
+        } else {
+          titleParts.push(e.name);
+        }
+        const typeMarkup = typeLabel ? `<span class="calendar-type ${typeClass}">${typeLabel}</span>` : '';
+        const entryTitle = typeLabel ? `${e.name} • ${typeLabel}` : e.name;
+        return `<div class="calendar-name" title="${entryTitle}"><span class="calendar-employee">${e.name}</span>${typeMarkup}</div>`;
       }).join('');
       content += `<div class="calendar-names">${namesMarkup}</div>`;
     }
-    const title = entries.map(e => `${e.name} - ${capitalize(e.type)}`).join('\n');
-    grid.innerHTML += `<div class="${classes.join(' ')}" title="${title}">${content}</div>`;
+    const title = titleParts.join('\n');
+    const titleAttr = title ? ` title="${title}"` : '';
+    grid.innerHTML += `<div class="${classes.join(' ')}"${titleAttr}>${content}</div>`;
   }
 }
 
