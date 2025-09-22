@@ -2,7 +2,7 @@
 
 let currentUser = null;
 let calendarCurrent = new Date();
-let empFilters = {};
+let empSearchTerm = '';
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
@@ -163,6 +163,14 @@ async function init() {
   showPanel('portal');
 
   document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
+
+  const empSearchInput = document.getElementById('empSearchInput');
+  if (empSearchInput) {
+    empSearchInput.addEventListener('input', () => {
+      empSearchTerm = empSearchInput.value;
+      loadEmployeesManage();
+    });
+  }
 
   document.getElementById('addEmployeeBtn').onclick = async () => {
     const fields = await getDynamicEmployeeFields();
@@ -680,6 +688,10 @@ async function loadEmployeesManage() {
   const body = document.getElementById('empTableBody');
   head.innerHTML = '';
   body.innerHTML = '';
+  const searchInput = document.getElementById('empSearchInput');
+  if (searchInput && searchInput.value !== empSearchTerm) {
+    searchInput.value = empSearchTerm;
+  }
   if (!emps.length) {
     head.innerHTML = '<tr><th style="padding:16px;">No data</th></tr>';
     return;
@@ -699,12 +711,21 @@ async function loadEmployeesManage() {
       k.toLowerCase() !== 'no'
   );
 
-  // Apply filters
+  const searchValue = empSearchTerm.trim().toLowerCase();
+
   const filtered = emps.filter(emp => {
-    return Object.entries(empFilters).every(([k, val]) => {
-      if (!val) return true;
-      const empVal = String(emp[k] ?? '').toLowerCase();
-      return empVal.includes(val.toLowerCase());
+    if (!searchValue) return true;
+    return Object.entries(emp).some(([key, value]) => {
+      if (key.toLowerCase() === 'id') return false;
+      if (value === null || typeof value === 'undefined') return false;
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value).toLowerCase().includes(searchValue);
+        } catch (e) {
+          return false;
+        }
+      }
+      return String(value).toLowerCase().includes(searchValue);
     });
   });
 
@@ -728,23 +749,10 @@ async function loadEmployeesManage() {
     `<th class="sticky-col actions-col">Actions</th>` +
     '</tr>';
 
-  // Filter row
-  const filterRow = document.createElement('tr');
-  filterRow.innerHTML =
-    `<th class="sticky-col no-col"><input type="text" data-key="${noKey}" class="filter-input" /></th>` +
-    `<th class="sticky-col name-col"><input type="text" data-key="${nameKey}" class="filter-input" /></th>` +
-    `<th><input type="text" data-key="${statusKey}" class="filter-input" /></th>` +
-    keys.map(k => `<th><input type="text" data-key="${k}" class="filter-input" /></th>`).join('') +
-    `<th class="sticky-col actions-col"></th>`;
-  head.appendChild(filterRow);
-  filterRow.querySelectorAll('input').forEach(inp => {
-    const k = inp.dataset.key;
-    inp.value = empFilters[k] || '';
-    inp.oninput = () => {
-      empFilters[k] = inp.value;
-      loadEmployeesManage();
-    };
-  });
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td class="table-empty" colspan="${keys.length + 4}">No employees match your search.</td></tr>`;
+    return;
+  }
 
   filtered.forEach((emp, idx) => {
     body.innerHTML += `<tr>

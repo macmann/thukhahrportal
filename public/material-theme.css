@@ -736,6 +736,19 @@ body {
   background: rgba(11, 87, 208, 0.06);
 }
 
+.table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.table-search {
+  width: 100%;
+  max-width: 320px;
+}
+
 .sticky-col {
   position: sticky;
   background: rgba(255, 255, 255, 0.98);
@@ -766,6 +779,13 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: rgba(248, 250, 255, 0.7);
   font-size: 0.85rem;
+}
+
+.table-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--md-sys-color-subtle);
+  font-size: 0.95rem;
 }
 
 .status-pill {
