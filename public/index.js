@@ -100,7 +100,7 @@ function showPanel(name) {
   const managerPanel = document.getElementById('managerAppsPanel');
   const reportPanel  = document.getElementById('leaveReportPanel');
 
-  [portalBtn, manageBtn, managerBtn, reportBtn].forEach(btn => btn && btn.classList.remove('bg-gray-200'));
+  [portalBtn, manageBtn, managerBtn, reportBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
 
   portalPanel.classList.add('hidden');
   managePanel.classList.add('hidden');
@@ -109,20 +109,20 @@ function showPanel(name) {
 
   if (name === 'portal') {
     portalPanel.classList.remove('hidden');
-    portalBtn.classList.add('bg-gray-200');
+    portalBtn.classList.add('active-tab');
   }
   if (name === 'manage') {
     managePanel.classList.remove('hidden');
-    manageBtn.classList.add('bg-gray-200');
+    manageBtn.classList.add('active-tab');
   }
   if (name === 'managerApps') {
     managerPanel.classList.remove('hidden');
-    managerBtn.classList.add('bg-gray-200');
+    managerBtn.classList.add('active-tab');
     loadManagerApplications();
   }
   if (name === 'leaveReport') {
     reportPanel.classList.remove('hidden');
-    reportBtn.classList.add('bg-gray-200');
+    reportBtn.classList.add('active-tab');
     loadLeaveReport();
     calendarCurrent = new Date();
     loadLeaveCalendar();
@@ -276,10 +276,16 @@ async function loadEmployeesPortal() {
     filteredEmps.forEach(e => sel.add(new Option(e.name, e.id)));
   });
   if (filteredEmps.length === 1) {
-    document.getElementById('employeeSelect').value = filteredEmps[0].id;
-    document.getElementById('employeeSelect').dispatchEvent(new Event('change'));
-    document.getElementById('reportSelect').value = filteredEmps[0].id;
-    document.getElementById('reportSelect').dispatchEvent(new Event('change'));
+    const empSel = document.getElementById('employeeSelect');
+    const reportSel = document.getElementById('reportSelect');
+    if (empSel) {
+      empSel.value = filteredEmps[0].id;
+      empSel.dispatchEvent(new Event('change'));
+    }
+    if (reportSel) {
+      reportSel.value = filteredEmps[0].id;
+      reportSel.dispatchEvent(new Event('change'));
+    }
   }
 }
 
@@ -403,10 +409,10 @@ async function onReasonSubmit(ev) {
 function renderPreviousLeaves(apps, emp) {
   const container = document.getElementById('prevLeaves');
   if (!apps.length) {
-    container.innerHTML = '<div class="text-gray-500 italic">No leave applications yet.</div>';
+    container.innerHTML = '<div class="text-muted" style="font-style:italic;">No leave applications yet.</div>';
     return;
   }
-  const typeIcon = { annual: '🌴', casual: '🏖️', medical: '🏥' };
+  const typeIcon = { annual: 'beach_access', casual: 'sunny', medical: 'medical_information' };
   container.innerHTML = apps.sort((a,b)=>new Date(b.from)-new Date(a.from)).map(app => {
     let days = calculateLeaveDays(app.from, app.to, app.halfDay);
     let daysText = days;
@@ -414,24 +420,24 @@ function renderPreviousLeaves(apps, emp) {
     if (app.halfDay) {
       typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
     }
+    const statusClass = app.status === 'approved' ? 'chip chip--approved' : app.status === 'rejected' ? 'chip chip--rejected' : 'chip chip--pending';
+    const icon = typeIcon[app.type] || 'event';
     return `
-      <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 w-64">
-        <div class="flex items-center gap-2 mb-2 font-semibold">
-          <span class="text-lg">${typeIcon[app.type]||''}</span>
+      <article class="history-card">
+        <div class="history-header">
+          <span class="material-symbols-rounded">${icon}</span>
           <span>${typeLabel}</span>
         </div>
-        <div class="mb-1 text-gray-700"><b>From:</b> ${app.from}</div>
-        <div class="mb-1 text-gray-700"><b>To:</b> ${app.to}</div>
-        <div class="mb-1 text-gray-700"><b>Days:</b> ${daysText}</div>
-        <div class="mb-1 text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
-        <div class="mt-2">
-          <span class="text-xs rounded px-2 py-1 ${app.status==='pending'?'bg-yellow-100 text-yellow-800':app.status==='rejected'?'bg-red-100 text-red-800':'bg-green-100 text-green-800'}">
-            ${capitalize(app.status||'pending')}
-          </span>
-          ${app.approvedBy ? `<span class="ml-2 text-xs text-gray-500">By: ${app.approvedBy}</span>` : ''}
-          ${app.approverRemark ? `<span class="ml-2 text-xs italic text-gray-600">Remark: ${app.approverRemark}</span>` : ''}
+        <div class="text-muted"><strong>From:</strong> ${app.from}</div>
+        <div class="text-muted"><strong>To:</strong> ${app.to}</div>
+        <div class="text-muted"><strong>Days:</strong> ${daysText}</div>
+        <div class="text-muted"><strong>Reason:</strong> <span class="text-quiet">${app.reason||'-'}</span></div>
+        <div class="text-muted" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+          <span class="${statusClass}">${capitalize(app.status||'pending')}</span>
+          ${app.approvedBy ? `<span class="text-quiet">Approver: ${app.approvedBy}</span>` : ''}
+          ${app.approverRemark ? `<span class="text-quiet">Remark: ${app.approverRemark}</span>` : ''}
         </div>
-      </div>
+      </article>
     `;
   }).join('');
 }
@@ -464,7 +470,7 @@ async function loadManagerApplications() {
   const emps = await getJSON('/employees');
   const list = document.getElementById('managerAppsList');
   if (!apps.length) {
-    list.innerHTML = `<div class="text-gray-500 italic">No pending leave applications.</div>`;
+    list.innerHTML = `<div class="text-muted" style="font-style:italic;">No pending leave applications.</div>`;
   } else {
     list.innerHTML = apps.map(app => {
       const emp = emps.find(e => e.id == app.employeeId);
@@ -478,25 +484,29 @@ async function loadManagerApplications() {
       const now = new Date();
       const canCancel = new Date(app.from) > now;
       return `
-        <div class="bg-gray-50 border rounded-lg shadow p-4 flex flex-col md:flex-row md:items-center gap-4">
-          <div class="flex-1">
-            <div class="flex items-center font-semibold mb-1">
-              <span class="text-orange-500 mr-2">📝</span>
+        <article class="list-card">
+          <div class="list-card__main">
+            <div class="list-card__header">
+              <span class="material-symbols-rounded">assignment_ind</span>
               <span>${emp ? emp.name : 'Unknown'}</span>
-              <span class="ml-3 px-2 rounded text-xs bg-blue-100 text-blue-700">${typeLabel}</span>
+              <span class="chip chip--info">${typeLabel}</span>
             </div>
-            <div class="text-sm mb-1 text-gray-700"><b>From:</b> ${app.from} <b>To:</b> ${app.to} <b>Days:</b> ${daysText}</div>
-            <div class="text-sm mb-1 text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
+            <div class="text-muted"><strong>From:</strong> ${app.from} · <strong>To:</strong> ${app.to} · <strong>Days:</strong> ${daysText}</div>
+            <div class="text-muted"><strong>Reason:</strong> <span class="text-quiet">${app.reason||'-'}</span></div>
           </div>
-          <div class="flex flex-col items-end gap-2">
-            <textarea id="remark-${app.id}" placeholder="Optional remark…" class="border rounded p-1 text-sm min-w-[150px]"></textarea>
-            <div class="flex gap-2">
-              <button class="px-3 py-1 bg-green-500 text-white rounded" onclick="approveApp(${app.id}, true)">Approve</button>
-              <button class="px-3 py-1 bg-red-500 text-white rounded" onclick="approveApp(${app.id}, false)">Reject</button>
-              ${canCancel ? `<button class="px-3 py-1 bg-gray-700 text-white rounded" onclick="cancelApp(${app.id})">Cancel</button>` : ''}
-            </div>
+          <textarea id="remark-${app.id}" placeholder="Add an optional remark…"></textarea>
+          <div class="list-card__actions">
+            <button class="md-button md-button--success md-button--small" onclick="approveApp(${app.id}, true)">
+              <span class="material-symbols-rounded">check</span>
+              Approve
+            </button>
+            <button class="md-button md-button--danger md-button--small" onclick="approveApp(${app.id}, false)">
+              <span class="material-symbols-rounded">close</span>
+              Reject
+            </button>
+            ${canCancel ? `<button class="md-button md-button--outlined md-button--small" onclick="cancelApp(${app.id})"><span class="material-symbols-rounded">cancel_schedule_send</span>Cancel</button>` : ''}
           </div>
-        </div>
+        </article>
       `;
     }).join('');
   }
@@ -513,7 +523,7 @@ async function loadManagerApplications() {
 
 async function loadOnLeaveToday() {
   const list = document.getElementById('onLeaveTodayList');
-  list.innerHTML = `<div class="text-gray-500">Loading...</div>`;
+  list.innerHTML = `<div class="text-muted">Loading...</div>`;
   try {
     const [emps, apps] = await Promise.all([
       getJSON('/employees'),
@@ -529,7 +539,7 @@ async function loadOnLeaveToday() {
     );
 
     if (!onLeave.length) {
-      list.innerHTML = `<div class="text-gray-400 py-2">No one is on leave today.</div>`;
+      list.innerHTML = `<div class="text-muted" style="font-style:italic;">No one is on leave today.</div>`;
       return;
     }
 
@@ -540,23 +550,21 @@ async function loadOnLeaveToday() {
         typeLabel += ` (Half Day${app.halfDayPeriod ? ' ' + app.halfDayPeriod : ''})`;
       }
       return `
-        <div class="bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm p-4 w-full flex flex-col md:flex-row md:items-center gap-2 mb-2">
-          <div class="flex-1">
-            <div class="flex items-center font-semibold mb-1">
-              <span class="text-yellow-600 mr-2">🟧</span>
-              <span>${emp ? emp.name : 'Unknown'}</span>
-              <span class="ml-3 px-2 rounded text-xs bg-blue-100 text-blue-700">${emp && emp.Project ? emp.Project : ''}</span>
-              <span class="ml-3 px-2 rounded text-xs bg-green-100 text-green-700">${typeLabel}</span>
-            </div>
-            <div class="text-gray-700"><b>From:</b> ${app.from}</div>
-            <div class="text-gray-700"><b>To:</b> ${app.to}</div>
-            <div class="text-gray-700"><b>Reason:</b> <span class="italic">${app.reason || '-'}</span></div>
+        <article class="history-card" style="background: rgba(255, 248, 230, 0.9); border-color: rgba(255, 211, 140, 0.45);">
+          <div class="history-header">
+            <span class="material-symbols-rounded">flight_takeoff</span>
+            <span>${emp ? emp.name : 'Unknown'}</span>
+            ${emp && emp.Project ? `<span class="chip chip--info">${emp.Project}</span>` : ''}
           </div>
-        </div>
+          <div class="text-muted"><strong>Type:</strong> <span class="chip chip--approved">${typeLabel}</span></div>
+          <div class="text-muted"><strong>From:</strong> ${app.from}</div>
+          <div class="text-muted"><strong>To:</strong> ${app.to}</div>
+          <div class="text-muted"><strong>Reason:</strong> <span class="text-quiet">${app.reason || '-'}</span></div>
+        </article>
       `;
     }).join('');
   } catch (err) {
-    list.innerHTML = `<div class="text-red-400">Failed to load on-leave data.</div>`;
+    list.innerHTML = `<div class="text-muted" style="color:#b3261e;">Failed to load on-leave data.</div>`;
     console.error(err);
   }
 }
@@ -581,11 +589,11 @@ async function loadManagerUpcomingLeaves(showCancel = false) {
   });
 
   if (!filtered.length) {
-    list.innerHTML = `<div class="text-gray-500 italic">No upcoming approved leaves in the next 1 month.</div>`;
+    list.innerHTML = `<div class="text-muted" style="font-style:italic;">No upcoming approved leaves in the next 1 month.</div>`;
     return;
   }
 
-  const typeIcon = { annual: '🌴', casual: '🏖️', medical: '🏥' };
+  const typeIcon = { annual: 'beach_access', casual: 'sunny', medical: 'medical_information' };
 
   list.innerHTML = filtered.sort((a, b) => new Date(a.from) - new Date(b.from)).map(app => {
     const emp = emps.find(e => e.id == app.employeeId);
@@ -597,27 +605,25 @@ async function loadManagerUpcomingLeaves(showCancel = false) {
     }
     // Show cancel if approved leave in future
     const canCancel = new Date(app.from) > now;
+    const icon = typeIcon[app.type] || 'event_available';
     return `
-      <div class="bg-white border border-green-100 rounded-lg shadow-sm p-4 w-full flex flex-col md:flex-row md:items-center gap-2">
-        <div class="flex-1">
-          <div class="flex items-center gap-2 font-semibold mb-1">
-            <span class="text-green-600">${typeIcon[app.type]||''}</span>
+      <article class="list-card">
+        <div class="list-card__main">
+          <div class="list-card__header">
+            <span class="material-symbols-rounded">${icon}</span>
             <span>${typeLabel}</span>
-            <span class="ml-2 px-2 rounded text-xs bg-green-100 text-green-700">Approved</span>
+            <span class="chip chip--approved">Approved</span>
           </div>
-          <div class="text-gray-700"><b>Name:</b> ${emp ? emp.name : 'Unknown'}</div>
-          <div class="text-gray-700"><b>From:</b> ${app.from}</div>
-          <div class="text-gray-700"><b>To:</b> ${app.to}</div>
-          <div class="text-gray-700"><b>Days:</b> ${daysText}</div>
-          <div class="text-gray-700"><b>Reason:</b> <span class="italic">${app.reason||'-'}</span></div>
+          <div class="text-muted"><strong>Name:</strong> ${emp ? emp.name : 'Unknown'}</div>
+          <div class="text-muted"><strong>From:</strong> ${app.from} · <strong>To:</strong> ${app.to}</div>
+          <div class="text-muted"><strong>Days:</strong> ${daysText}</div>
+          <div class="text-muted"><strong>Reason:</strong> <span class="text-quiet">${app.reason||'-'}</span></div>
+          <div class="text-quiet">By: ${app.approvedBy||'-'}</div>
+          ${app.approverRemark ? `<div class="text-quiet">Remark: ${app.approverRemark}</div>` : ''}
+          ${app.approvedAt ? `<div class="text-quiet">Approved At: ${app.approvedAt.substring(0,10)}</div>` : ''}
         </div>
-        <div class="flex flex-col gap-1 min-w-[160px]">
-          <span class="text-xs text-gray-500">By: ${app.approvedBy||'-'}</span>
-          ${app.approverRemark ? `<span class="text-xs italic text-gray-600">Remark: ${app.approverRemark}</span>` : ''}
-          <span class="text-xs text-gray-400">${app.approvedAt ? `Approved At: ${app.approvedAt.substring(0,10)}` : ''}</span>
-          ${canCancel ? `<button class="px-3 py-1 mt-2 bg-gray-700 text-white rounded" onclick="cancelApp(${app.id})">Cancel</button>` : ''}
-        </div>
-      </div>
+        ${canCancel ? `<div class="list-card__actions"><button class="md-button md-button--outlined md-button--small" onclick="cancelApp(${app.id})"><span class="material-symbols-rounded">cancel</span>Cancel</button></div>` : ''}
+      </article>
     `;
   }).join('');
 }
@@ -675,7 +681,7 @@ async function loadEmployeesManage() {
   head.innerHTML = '';
   body.innerHTML = '';
   if (!emps.length) {
-    head.innerHTML = '<tr><th class="px-4 py-2">No data</th></tr>';
+    head.innerHTML = '<tr><th style="padding:16px;">No data</th></tr>';
     return;
   }
 
@@ -715,21 +721,21 @@ async function loadEmployeesManage() {
 
   // Table header
   head.innerHTML = '<tr>' +
-    `<th class="sticky-col no-col px-4 py-2 font-medium bg-gray-50">No</th>` +
-    `<th class="sticky-col name-col px-4 py-2 font-medium bg-gray-50">Name</th>` +
-    `<th class="px-4 py-2 font-medium bg-gray-50">Status</th>` +
-    keys.map(k => `<th class="px-4 py-2 font-medium bg-gray-50">${k.charAt(0).toUpperCase() + k.slice(1)}</th>`).join('') +
-    `<th class="sticky-col actions-col px-4 py-2 font-medium bg-gray-50">Actions</th>` +
+    `<th class="sticky-col no-col">No</th>` +
+    `<th class="sticky-col name-col">Name</th>` +
+    `<th>Status</th>` +
+    keys.map(k => `<th>${k.charAt(0).toUpperCase() + k.slice(1)}</th>`).join('') +
+    `<th class="sticky-col actions-col">Actions</th>` +
     '</tr>';
 
   // Filter row
   const filterRow = document.createElement('tr');
   filterRow.innerHTML =
-    `<th class="sticky-col no-col px-4 py-2 bg-gray-50"><input type="text" data-key="${noKey}" class="w-full border px-2 py-1 text-sm" /></th>` +
-    `<th class="sticky-col name-col px-4 py-2 bg-gray-50"><input type="text" data-key="${nameKey}" class="w-full border px-2 py-1 text-sm" /></th>` +
-    `<th class="px-4 py-2 bg-gray-50"><input type="text" data-key="${statusKey}" class="w-full border px-2 py-1 text-sm" /></th>` +
-    keys.map(k => `<th class="px-4 py-2 bg-gray-50"><input type="text" data-key="${k}" class="w-full border px-2 py-1 text-sm" /></th>`).join('') +
-    `<th class="sticky-col actions-col px-4 py-2 bg-gray-50"></th>`;
+    `<th class="sticky-col no-col"><input type="text" data-key="${noKey}" class="filter-input" /></th>` +
+    `<th class="sticky-col name-col"><input type="text" data-key="${nameKey}" class="filter-input" /></th>` +
+    `<th><input type="text" data-key="${statusKey}" class="filter-input" /></th>` +
+    keys.map(k => `<th><input type="text" data-key="${k}" class="filter-input" /></th>`).join('') +
+    `<th class="sticky-col actions-col"></th>`;
   head.appendChild(filterRow);
   filterRow.querySelectorAll('input').forEach(inp => {
     const k = inp.dataset.key;
@@ -742,21 +748,22 @@ async function loadEmployeesManage() {
 
   filtered.forEach((emp, idx) => {
     body.innerHTML += `<tr>
-      <td class="sticky-col no-col px-4 py-2 bg-white">${emp[noKey] ?? idx + 1}</td>
-      <td class="sticky-col name-col px-4 py-2 bg-white">${emp[nameKey] ?? ''}</td>
-      <td class="px-4 py-2">
-        <span class="inline-block rounded-full px-3 py-1 text-xs font-bold
-          ${emp[statusKey] === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+      <td class="sticky-col no-col">${emp[noKey] ?? idx + 1}</td>
+      <td class="sticky-col name-col">${emp[nameKey] ?? ''}</td>
+      <td>
+        <span class="status-pill ${emp[statusKey] === 'active' ? 'status-pill--active' : 'status-pill--inactive'}">
           ${emp[statusKey]}
         </span>
       </td>
-      ${keys.map(k => `<td class="px-4 py-2">${typeof emp[k] === 'object' ? JSON.stringify(emp[k]) : (emp[k] ?? '')}</td>`).join('')}
-      <td class="sticky-col actions-col px-4 py-2 bg-white">
-        <button onclick="openEditEmployee('${emp.id}')" class="mr-2 underline text-blue-600">Edit</button>
-        <button data-action="toggle" data-id="${emp.id}" class="mr-2 underline text-${emp[statusKey]==='active'?'red':'green'}-600">
-          ${emp[statusKey] === 'active' ? 'Deactivate' : 'Activate'}
-        </button>
-        <button data-action="delete" data-id="${emp.id}" class="underline text-red-600">Delete</button>
+      ${keys.map(k => `<td>${typeof emp[k] === 'object' ? JSON.stringify(emp[k]) : (emp[k] ?? '')}</td>`).join('')}
+      <td class="sticky-col actions-col">
+        <div class="table-actions">
+          <button onclick="openEditEmployee('${emp.id}')">Edit</button>
+          <button data-action="toggle" data-id="${emp.id}" class="${emp[statusKey]==='active' ? 'action-danger' : ''}">
+            ${emp[statusKey] === 'active' ? 'Deactivate' : 'Activate'}
+          </button>
+          <button data-action="delete" data-id="${emp.id}" class="action-danger">Delete</button>
+        </div>
       </td>
     </tr>`;
   });
@@ -802,17 +809,17 @@ async function loadLeaveReport() {
   const body = document.getElementById('leaveReportBody');
   if (!body) return;
   if (!data.length) {
-    body.innerHTML = '<tr><td colspan="5" class="px-4 py-2 italic text-gray-500">No leave records.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" style="padding:16px; font-style:italic;" class="text-muted">No leave records.</td></tr>';
     return;
   }
   body.innerHTML = data.map(r => {
     const breakdown = Object.entries(r.leaves).map(([k,v]) => `${capitalize(k)}: ${v}`).join(', ');
     return `<tr>
-      <td class="px-4 py-2">${r.name}</td>
-      <td class="px-4 py-2">${r.title || ''}</td>
-      <td class="px-4 py-2">${r.location || ''}</td>
-      <td class="px-4 py-2 text-center">${r.totalDays}</td>
-      <td class="px-4 py-2">${breakdown}</td>
+      <td>${r.name}</td>
+      <td>${r.title || ''}</td>
+      <td>${r.location || ''}</td>
+      <td style="text-align:center; font-weight:600;">${r.totalDays}</td>
+      <td>${breakdown}</td>
     </tr>`;
   }).join('');
 }
@@ -826,18 +833,21 @@ async function loadLeaveRange(start, end) {
   const container = document.getElementById('leaveRangeCards');
   if (!container) return;
   if (!data.length) {
-    container.innerHTML = '<div class="text-gray-500 italic">No leaves in this period.</div>';
+    container.innerHTML = '<div class="text-muted" style="font-style:italic;">No leaves in this period.</div>';
     return;
   }
   container.innerHTML = data.map(r => {
     const breakdown = Object.entries(r.leaves).map(([k,v]) => `${capitalize(k)}: ${v}`).join(', ');
-    return `<div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 w-64">
-      <div class="font-semibold mb-1">${r.name}</div>
-      <div class="text-gray-700 mb-1"><b>Title:</b> ${r.title || ''}</div>
-      <div class="text-gray-700 mb-1"><b>Location:</b> ${r.location || ''}</div>
-      <div class="mb-1 text-gray-700"><b>Total:</b> ${r.totalDays}</div>
-      <div class="text-gray-700"><b>Breakdown:</b> ${breakdown}</div>
-    </div>`;
+    return `<article class="history-card">
+      <div class="history-header">
+        <span class="material-symbols-rounded">badge</span>
+        <span>${r.name}</span>
+      </div>
+      <div class="text-muted"><strong>Title:</strong> ${r.title || ''}</div>
+      <div class="text-muted"><strong>Location:</strong> ${r.location || ''}</div>
+      <div class="text-muted"><strong>Total:</strong> ${r.totalDays}</div>
+      <div class="text-muted"><strong>Breakdown:</strong> <span class="text-quiet">${breakdown}</span></div>
+    </article>`;
   }).join('');
 }
 
@@ -847,16 +857,23 @@ function openEmpDrawer({title, fields, initial={}}) {
   document.getElementById('drawerTitle').textContent = title;
   const fieldHtml = fields.map(f => {
     const val = initial[f.key] ?? '';
+    const fieldId = `drawer-${f.key}`.replace(/\s+/g, '-');
     if (f.type === 'select') {
-      return `<label class="block mb-1">${f.label}
-        <select name="${f.key}" class="w-full p-2 border rounded mb-2">${f.options.map(opt => `
-          <option value="${opt}" ${val === opt ? 'selected':''}>${opt}</option>
-        `).join('')}</select>
-      </label>`;
+      return `<div class="md-field">
+        <label class="md-label" for="${fieldId}">${f.label}</label>
+        <div class="md-input-wrapper">
+          <select name="${f.key}" id="${fieldId}" class="md-select">
+            ${f.options.map(opt => `<option value="${opt}" ${val === opt ? 'selected':''}>${opt}</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
     }
-    return `<label class="block mb-1">${f.label}
-      <input name="${f.key}" class="w-full p-2 border rounded mb-2" value="${val}" ${f.type ? `type="${f.type}"` : ''} ${f.required ? 'required' : ''}>
-    </label>`;
+    return `<div class="md-field">
+      <label class="md-label" for="${fieldId}">${f.label}</label>
+      <div class="md-input-wrapper">
+        <input name="${f.key}" id="${fieldId}" class="md-input" value="${val}" ${f.type ? `type="${f.type}"` : ''} ${f.required ? 'required' : ''}>
+      </div>
+    </div>`;
   }).join('');
   document.getElementById('drawerFields').innerHTML = fieldHtml;
   document.getElementById('empDrawer').classList.remove('hidden');
@@ -954,7 +971,7 @@ async function loadLeaveCalendar() {
   const firstDay = new Date(monthStart);
   const offset = firstDay.getDay();
   for (let i = 0; i < offset; i++) {
-    grid.innerHTML += '<div class="bg-white h-24"></div>';
+    grid.innerHTML += '<div class="calendar-empty"></div>';
   }
   const today = new Date();
   for (let d=1; d<=monthEnd.getDate(); d++) {
@@ -962,18 +979,16 @@ async function loadLeaveCalendar() {
     const dateStr = date.toLocaleDateString('en-CA');
     const entries = map[dateStr] || [];
     const future  = date > today;
-    const classes = ['h-24','p-1','relative','cursor-default','hover:cursor-pointer'];
+    const classes = [];
     if ([1,2,3,4,5].includes(date.getDay())) {
-      classes.push('bg-blue-50');
-    } else {
-      classes.push('bg-white');
+      classes.push('weekday');
     }
-    if (future) classes.push('text-gray-400');
+    if (future) classes.push('future');
     const names = entries.map(e => e.name).join(', ');
     const short = names.length > 25 ? names.substring(0,22) + '...' : names;
-    let content = `<div>${d}</div>`;
+    let content = `<div class="calendar-date">${d}</div>`;
     if (names) {
-      content += `<div class="text-xs truncate" title="${names}">${short}</div>`;
+      content += `<div class="calendar-names" title="${names}">${short}</div>`;
     }
     const title = entries.map(e => `${e.name} - ${capitalize(e.type)}`).join('\n');
     grid.innerHTML += `<div class="${classes.join(' ')}" title="${title}">${content}</div>`;

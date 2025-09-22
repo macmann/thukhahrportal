@@ -3,305 +3,446 @@
 <head>
   <meta charset="UTF-8">
   <title>Leave Management | Brillar</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    .sticky-col { position: sticky; background: white; }
-    .left-0 { left: 0; }
-    .right-0 { right: 0; }
-    .z-10 { z-index: 10; }
-    .overflow-x-auto { overflow-x: scroll !important; scrollbar-width: auto; scrollbar-color: #cbd5e1 #f1f5f9; }
-    .overflow-x-auto::-webkit-scrollbar { height: 10px; background: #f1f5f9; }
-    .overflow-x-auto::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-    #empDrawer.show #drawerPanel { transform: translateX(0) !important; }
-    #drawerPanel { transform: translateX(100%); }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="material-theme.css">
 </head>
-<body class="bg-gray-100 font-sans">
-
-  <!-- Login Modal -->
-  <div id="loginPage" class="flex items-center justify-center min-h-screen bg-gradient-to-br from-sky-50 via-white to-sky-100">
-    <div class="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 flex flex-col items-center gap-6">
-      <img src="logo.png" alt="Brillar Logo" class="w-32 mb-2 mx-auto" style="filter: drop-shadow(0 2px 8px rgba(0,0,0,0.08));">
-      <h2 class="text-2xl font-bold text-gray-800 tracking-tight mb-2">Brillar Leave Management Portal</h2>
-      <form id="loginForm" class="w-full flex flex-col gap-4">
-        <div>
-          <label class="block text-gray-700 font-semibold mb-1" for="loginEmail">Email</label>
-          <input id="loginEmail" name="email" type="email" required placeholder="your.email@brillar.io"
-            class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-300 focus:border-cyan-400 transition outline-none"/>
+<body class="app-shell">
+  <!-- Login Experience -->
+  <div id="loginPage" class="login-view">
+    <div class="login-card">
+      <img src="logo.png" alt="Brillar Logo" class="brand-logo">
+      <div>
+        <h1 class="login-title">Brillar Leave Portal</h1>
+        <p class="login-subtitle">Sign in to request leave, review approvals, and keep your team informed.</p>
+      </div>
+      <form id="loginForm" class="form-stack">
+        <div class="md-field">
+          <label class="md-label" for="loginEmail">Work Email</label>
+          <div class="md-input-wrapper">
+            <span class="material-symbols-rounded">mail</span>
+            <input id="loginEmail" name="email" type="email" placeholder="you@brillar.io" required class="md-input">
+          </div>
         </div>
-        <div>
-          <label class="block text-gray-700 font-semibold mb-1" for="loginPassword">Password</label>
-          <input id="loginPassword" name="password" type="password" required placeholder="Enter password"
-            class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-300 focus:border-cyan-400 transition outline-none"/>
+        <div class="md-field">
+          <label class="md-label" for="loginPassword">Password</label>
+          <div class="md-input-wrapper">
+            <span class="material-symbols-rounded">lock</span>
+            <input id="loginPassword" name="password" type="password" placeholder="Enter your password" required class="md-input">
+          </div>
         </div>
-        <button type="submit" class="w-full mt-2 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-cyan-600 hover:from-cyan-500 hover:to-cyan-700 text-white font-bold shadow-lg text-lg tracking-wide transition">
+        <button type="submit" class="md-button md-button--filled">
+          <span class="material-symbols-rounded">login</span>
           Sign In
         </button>
-        <button id="msLoginBtn" type="button" class="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow text-lg tracking-wide transition">
+        <button id="msLoginBtn" type="button" class="md-button md-button--outlined">
+          <span class="material-symbols-rounded">account_circle</span>
           Sign in with Microsoft 365
         </button>
-        <div id="loginError" class="hidden text-red-600 mt-2 text-center"></div>
+        <div id="loginError" class="form-error hidden"></div>
       </form>
     </div>
   </div>
 
-  <!-- Main App Section -->
-  <div id="mainApp" class="hidden">
-    <header class="bg-gray-800 text-white flex items-center px-6 py-4">
-      <img src="https://static.wixstatic.com/media/34647d_4924e46631c3463abed06f9e3147eba3~mv2.png"
-           class="h-10 mr-4" alt="Brillar Logo">
-      <h1 class="text-xl font-semibold">Leave Management</h1>
-      <button onclick="logout()" class="ml-auto bg-gray-400 text-white px-4 py-1 rounded hidden" id="logoutBtn">Logout</button>
-      <button id="changePassBtn" class="ml-2 bg-gray-600 text-white px-3 py-1 rounded hidden">Change Password</button>
-    </header>
-    <nav class="flex border-b bg-white">
-      <button id="tabPortal"
-              class="flex-1 py-3 font-semibold bg-gray-200 hover:bg-gray-300 transition">
-        Leave Portal
-      </button>
-      <button id="tabManage"
-              class="flex-1 py-3 font-semibold hover:bg-gray-300 transition">
-        Employee Management
-      </button>
-      <!-- NEW: Manager Leave Applications tab (hidden for non-managers, toggled in JS) -->
-      <button id="tabManagerApps"
-              class="flex-1 py-3 font-semibold hover:bg-gray-300 transition hidden">
-        Leave Applications
-      </button>
-      <!-- New: Leave Report tab -->
-      <button id="tabLeaveReport"
-              class="flex-1 py-3 font-semibold hover:bg-gray-300 transition hidden">
-        Leave Report
-      </button>
-    </nav>
-    <div class="container mx-auto my-6 px-2 sm:px-4">
-
-      <!-- Leave Portal Panel -->
-      <div id="portalPanel" class="mb-8 bg-white shadow-lg rounded-2xl p-6 transition-all">
-        <!-- ... unchanged ... -->
-        <div class="flex flex-col md:flex-row gap-6 items-end md:items-center mb-6">
-          <div class="w-full md:w-1/2" id="empDropdownContainer">
-            <label for="employeeSelect" class="block font-semibold text-gray-700 mb-2">Select Employee</label>
-            <select id="employeeSelect" class="w-full px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition"></select>
-          </div>
-          <div class="w-full md:w-1/2">
-            <div class="font-semibold text-gray-700 mb-2">Current Leave Balance</div>
-            <div id="balanceDisplay" class="flex flex-row gap-4 p-3 bg-gradient-to-r from-blue-50 to-orange-50 rounded-lg shadow-sm border border-gray-100 items-center">
-              <span class="flex items-center gap-1 text-lg font-semibold text-green-600"><span>🌴</span> <span>Annual:</span> <span id="balAnnual">-</span> d</span>
-              <span class="flex items-center gap-1 text-lg font-semibold text-yellow-600"><span>🏖️</span> <span>Casual:</span> <span id="balCasual">-</span> d</span>
-              <span class="flex items-center gap-1 text-lg font-semibold text-pink-600"><span>🏥</span> <span>Medical:</span> <span id="balMedical">-</span> d</span>
-            </div>
-          </div>
-        </div>
-        <!-- ... unchanged ... -->
-        <div class="bg-gray-50 rounded-xl shadow-inner p-6 mb-8 border border-gray-100">
-          <div class="text-lg font-semibold text-gray-800 mb-4">Apply for Leave</div>
-          <form id="applyForm" class="flex flex-col md:flex-row md:items-end gap-4">
-            <div class="flex-1">
-              <label for="type" class="block text-gray-600 mb-1">Leave Type</label>
-              <select name="type" id="type" class="w-full px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition"></select>
-            </div>
-            <div>
-              <label for="from" class="block text-gray-600 mb-1">From</label>
-              <input type="date" id="from" class="px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition" required>
-            </div>
-            <div>
-              <label for="to" class="block text-gray-600 mb-1">To</label>
-              <input type="date" id="to" class="px-4 py-2 rounded-lg border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-orange-400 transition" required>
-            </div>
-            <div class="flex items-center mt-2">
-            <input type="checkbox" id="halfDay" class="mr-2" onchange="toggleHalfDayPeriod()">
-            <label for="halfDay" class="text-sm mr-4">Half Day</label>
-            <select id="halfDayPeriod" class="hidden border rounded px-2 py-1 text-sm">
-              <option value="AM">AM</option>
-              <option value="PM">PM</option>
-            </select>
-          </div>
-
-          <script>
-          function toggleHalfDayPeriod() {
-            document.getElementById('halfDayPeriod').classList.toggle('hidden', !document.getElementById('halfDay').checked);
-          }
-          </script>
-
-            <button type="submit" class="bg-gradient-to-r from-orange-400 to-orange-600 text-white px-8 py-2 rounded-lg shadow hover:scale-105 transition font-semibold">Apply</button>
-          </form>
-        </div>
-        <div id="reasonModal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 hidden">
-          <div class="bg-white rounded-xl p-8 w-full max-w-md shadow-lg relative">
-            <button type="button" id="modalCloseBtn" class="absolute right-4 top-4 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
-            <div class="text-lg font-semibold mb-2">Reason for Leave</div>
-            <form id="reasonForm">
-              <textarea id="reasonInput" class="w-full border border-gray-300 p-3 rounded-lg min-h-[100px] focus:ring-2 focus:ring-orange-400 transition" placeholder="Enter your reason..." required></textarea>
-              <div class="flex justify-end mt-4">
-                <button type="submit" class="bg-gradient-to-r from-orange-400 to-orange-600 text-white px-6 py-2 rounded-lg shadow hover:scale-105 transition font-semibold">Submit</button>
-              </div>
-            </form>
-          </div>
-        </div>
-        <!-- Change Password Modal -->
-        <div id="changePassModal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 hidden">
-          <div class="bg-white rounded-xl p-8 w-full max-w-md shadow-lg relative">
-            <button type="button" id="passModalClose" class="absolute right-4 top-4 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
-            <div class="text-lg font-semibold mb-4">Change Password</div>
-            <form id="changePassForm" class="space-y-4">
-              <div>
-                <label class="block mb-1 font-semibold text-gray-700" for="currentPassword">Current Password</label>
-                <input type="password" id="currentPassword" class="w-full border border-gray-300 p-2 rounded" required />
-              </div>
-              <div>
-                <label class="block mb-1 font-semibold text-gray-700" for="newPassword">New Password</label>
-                <input type="password" id="newPassword" class="w-full border border-gray-300 p-2 rounded" required />
-              </div>
-              <div>
-                <label class="block mb-1 font-semibold text-gray-700" for="confirmPassword">Confirm Password</label>
-                <input type="password" id="confirmPassword" class="w-full border border-gray-300 p-2 rounded" required />
-              </div>
-              <div class="flex justify-end gap-2">
-                <button type="button" id="cancelPassChange" class="bg-gray-400 text-white px-4 py-2 rounded">Cancel</button>
-                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Change</button>
-              </div>
-            </form>
-          </div>
-        </div>
-        <div>
-          <div class="font-semibold text-gray-700 text-lg mb-3">Previous Leave Applications</div>
-          <div id="prevLeaves" class="flex flex-wrap gap-4"></div>
+  <!-- Main Application -->
+  <div id="mainApp" class="hidden app-container">
+    <header class="top-app-bar">
+      <div class="brand-cluster">
+        <img src="https://static.wixstatic.com/media/34647d_4924e46631c3463abed06f9e3147eba3~mv2.png" alt="Brillar Logo">
+        <div class="brand-text">
+          <span class="brand-title">Brillar Leave Management</span>
+          <span class="brand-subtitle">Modern, people-first HR experiences</span>
         </div>
       </div>
+      <div class="app-actions">
+        <button id="changePassBtn" type="button" class="md-button md-button--tonal hidden">
+          <span class="material-symbols-rounded">key</span>
+          Change Password
+        </button>
+        <button id="logoutBtn" type="button" onclick="logout()" class="md-button md-button--outlined hidden">
+          <span class="material-symbols-rounded">logout</span>
+          Logout
+        </button>
+      </div>
+    </header>
+
+    <nav class="tab-bar">
+      <button id="tabPortal" class="tab-button active-tab">
+        <span class="material-symbols-rounded">event_available</span>
+        <span>Leave Portal</span>
+      </button>
+      <button id="tabManage" class="tab-button">
+        <span class="material-symbols-rounded">group</span>
+        <span>Employee Management</span>
+      </button>
+      <button id="tabManagerApps" class="tab-button hidden">
+        <span class="material-symbols-rounded">inbox</span>
+        <span>Leave Applications</span>
+      </button>
+      <button id="tabLeaveReport" class="tab-button hidden">
+        <span class="material-symbols-rounded">insights</span>
+        <span>Leave Report</span>
+      </button>
+    </nav>
+
+    <main class="content-area">
+      <!-- Leave Portal Panel -->
+      <section id="portalPanel" class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="material-symbols-rounded">widgets</span>
+            Leave Portal
+          </h2>
+          <p class="panel-subtitle">Submit leave requests, review balances, and track recent activity at a glance.</p>
+        </div>
+
+        <div class="card-grid">
+          <div class="md-card">
+            <div class="card-title">
+              <span class="material-symbols-rounded">badge</span>
+              Select Employee
+            </div>
+            <div class="card-subtitle">Choose a colleague to surface their balances and manage applications.</div>
+            <div class="md-field">
+              <label class="md-label" for="employeeSelect">Employee</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">person</span>
+                <select id="employeeSelect" class="md-select"></select>
+              </div>
+            </div>
+          </div>
+
+          <div class="md-card">
+            <div class="card-title">
+              <span class="material-symbols-rounded">account_balance_wallet</span>
+              Current Leave Balance
+            </div>
+            <div id="balanceDisplay" class="balance-chips">
+              <div class="balance-chip chip-annual">
+                <span class="material-symbols-rounded">beach_access</span>
+                <div>
+                  <span class="label">Annual</span>
+                  <strong id="balAnnual">-</strong><span class="unit">days</span>
+                </div>
+              </div>
+              <div class="balance-chip chip-casual">
+                <span class="material-symbols-rounded">sunny</span>
+                <div>
+                  <span class="label">Casual</span>
+                  <strong id="balCasual">-</strong><span class="unit">days</span>
+                </div>
+              </div>
+              <div class="balance-chip chip-medical">
+                <span class="material-symbols-rounded">medical_information</span>
+                <div>
+                  <span class="label">Medical</span>
+                  <strong id="balMedical">-</strong><span class="unit">days</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="md-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">calendar_month</span>
+            Apply for Leave
+          </div>
+          <form id="applyForm" class="form-grid">
+            <div class="md-field">
+              <label class="md-label" for="type">Leave Type</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">category</span>
+                <select id="type" name="type" class="md-select"></select>
+              </div>
+            </div>
+            <div class="md-field">
+              <label class="md-label" for="from">From</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">event</span>
+                <input type="date" id="from" required class="md-input">
+              </div>
+            </div>
+            <div class="md-field">
+              <label class="md-label" for="to">To</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">event</span>
+                <input type="date" id="to" required class="md-input">
+              </div>
+            </div>
+            <div class="md-field checkbox-line">
+              <input type="checkbox" id="halfDay" onchange="toggleHalfDayPeriod()">
+              <label for="halfDay" class="md-label">Half Day</label>
+              <select id="halfDayPeriod" class="md-select hidden">
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+              </select>
+            </div>
+            <button type="submit" class="md-button md-button--filled">
+              <span class="material-symbols-rounded">send</span>
+              Submit Application
+            </button>
+          </form>
+        </div>
+
+        <div id="reasonModal" class="modal-backdrop hidden">
+          <div class="modal-card">
+            <button type="button" id="modalCloseBtn" class="modal-close material-symbols-rounded">close</button>
+            <h3 class="modal-title">
+              <span class="material-symbols-rounded">chat</span>
+              Reason for Leave
+            </h3>
+            <form id="reasonForm" class="form-stack">
+              <textarea id="reasonInput" class="md-textarea" placeholder="Add helpful context for your approver" required></textarea>
+              <div class="modal-actions">
+                <button type="submit" class="md-button md-button--filled md-button--small">
+                  <span class="material-symbols-rounded">check_circle</span>
+                  Submit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="changePassModal" class="modal-backdrop hidden">
+          <div class="modal-card">
+            <button type="button" id="passModalClose" class="modal-close material-symbols-rounded">close</button>
+            <h3 class="modal-title">
+              <span class="material-symbols-rounded">key</span>
+              Change Password
+            </h3>
+            <form id="changePassForm" class="form-stack">
+              <div class="md-field">
+                <label class="md-label" for="currentPassword">Current Password</label>
+                <div class="md-input-wrapper">
+                  <span class="material-symbols-rounded">lock_open</span>
+                  <input type="password" id="currentPassword" required class="md-input">
+                </div>
+              </div>
+              <div class="md-field">
+                <label class="md-label" for="newPassword">New Password</label>
+                <div class="md-input-wrapper">
+                  <span class="material-symbols-rounded">password</span>
+                  <input type="password" id="newPassword" required class="md-input">
+                </div>
+              </div>
+              <div class="md-field">
+                <label class="md-label" for="confirmPassword">Confirm Password</label>
+                <div class="md-input-wrapper">
+                  <span class="material-symbols-rounded">verified_user</span>
+                  <input type="password" id="confirmPassword" required class="md-input">
+                </div>
+              </div>
+              <div class="modal-actions">
+                <button type="button" id="cancelPassChange" class="md-button md-button--text md-button--small">Cancel</button>
+                <button type="submit" class="md-button md-button--filled md-button--small">
+                  <span class="material-symbols-rounded">save</span>
+                  Update
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="md-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">history</span>
+            Previous Leave Applications
+          </div>
+          <div id="prevLeaves"></div>
+        </div>
+      </section>
 
       <!-- Employee Management Panel -->
-      <div id="managePanel" class="hidden bg-white shadow-lg rounded-2xl p-6">
-        <h2 class="font-semibold text-xl mb-6 flex items-center">
-          <svg class="h-8 w-8 text-blue-400 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5.121 17.804A7 7 0 1117 11a6.993 6.993 0 01-1.121 3.804M12 21v-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Manage Employees
-        </h2>
-        <div class="mb-4 flex items-center">
-          <div class="inline-flex items-center rounded-lg bg-green-50 px-4 py-2 border border-green-200">
-            <svg class="h-6 w-6 text-green-500 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5.121 17.804A7 7 0 1117 11a6.993 6.993 0 01-1.121 3.804M12 21v-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span class="font-bold text-green-700 text-lg mr-1" id="activeCountNum">0</span>
-            <span class="text-green-700">Active Employees</span>
-          </div>
-          <button id="csvUploadBtn" class="ml-auto bg-blue-500 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-600 transition">Upload CSV</button>
-          <button id="addEmployeeBtn" class="ml-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-700 transition">+ Add Employee</button>
-          <input id="csvInput" type="file" accept=".csv" class="hidden">
+      <section id="managePanel" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="material-symbols-rounded">supervisor_account</span>
+            Manage Employees
+          </h2>
+          <p class="panel-subtitle">Keep employee records tidy, upload new team members, and adjust balances instantly.</p>
         </div>
-        <div class="overflow-x-auto mb-6" style="overflow-x:auto; min-height:40px;">
-          <table id="empTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
-            <thead id="empTableHead" class="bg-gray-100 border-b text-left"></thead>
+
+        <div class="card-grid">
+          <div class="md-card">
+            <div class="card-title">
+              <span class="material-symbols-rounded">diversity_3</span>
+              Active Employees
+            </div>
+            <p class="card-subtitle">Monitor your roster and ensure everyone's details stay current.</p>
+            <div class="balance-chip" style="background: rgba(16,200,84,0.12); color:#0f7b32;">
+              <span class="material-symbols-rounded">groups</span>
+              <div>
+                <span class="label">Currently active</span>
+                <strong id="activeCountNum">0</strong>
+                <span class="unit">members</span>
+              </div>
+            </div>
+          </div>
+          <div class="md-card">
+            <div class="card-title">
+              <span class="material-symbols-rounded">upload_file</span>
+              Quick Actions
+            </div>
+            <div class="list-card__actions" style="justify-content:flex-start;">
+              <button id="csvUploadBtn" class="md-button md-button--outlined">
+                <span class="material-symbols-rounded">cloud_upload</span>
+                Upload CSV
+              </button>
+              <button id="addEmployeeBtn" class="md-button md-button--filled">
+                <span class="material-symbols-rounded">person_add</span>
+                Add Employee
+              </button>
+              <input id="csvInput" type="file" accept=".csv" class="hidden">
+            </div>
+          </div>
+        </div>
+
+        <div class="md-card" style="overflow-x:auto;">
+          <table id="empTable" class="data-table">
+            <thead id="empTableHead"></thead>
             <tbody id="empTableBody"></tbody>
           </table>
         </div>
-        <div id="empDrawer" class="fixed inset-0 z-40 bg-black bg-opacity-30 hidden">
-          <div class="absolute top-0 right-0 h-full w-full max-w-md bg-white shadow-lg transition-transform duration-300 translate-x-full"
-               id="drawerPanel" tabindex="-1">
-            <div class="flex justify-between items-center px-6 py-4 border-b">
-              <h3 id="drawerTitle" class="text-lg font-semibold">Add Employee</h3>
-              <button id="drawerCloseBtn" class="text-gray-600 hover:text-gray-900 text-xl font-bold">&times;</button>
+
+        <div id="empDrawer" class="drawer-backdrop hidden">
+          <div id="drawerPanel" class="drawer-panel" tabindex="-1">
+            <div class="drawer-header">
+              <h3 id="drawerTitle" class="drawer-title">Add Employee</h3>
+              <button id="drawerCloseBtn" class="drawer-close material-symbols-rounded" type="button">close</button>
             </div>
-            <form id="empDrawerForm" class="p-6 space-y-4 overflow-y-auto max-h-[80vh]">
+            <form id="empDrawerForm" class="drawer-body">
               <div id="drawerFields"></div>
-              <div class="flex space-x-2 mt-4">
-                <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
-                  Save
-                </button>
-                <button type="button" id="drawerCancelBtn" class="bg-gray-400 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded">
-                  Cancel
-                </button>
-              </div>
             </form>
+            <div class="drawer-actions">
+              <button type="submit" form="empDrawerForm" class="md-button md-button--filled md-button--small">
+                <span class="material-symbols-rounded">save</span>
+                Save
+              </button>
+              <button type="button" id="drawerCancelBtn" class="md-button md-button--outlined md-button--small">Cancel</button>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- ================= MANAGER LEAVE APPLICATIONS PANEL ================= -->
-      <div id="managerAppsPanel" class="hidden bg-white shadow-lg rounded-2xl p-6">
-        <h2 class="font-semibold text-xl mb-6 flex items-center">
-          <svg class="h-8 w-8 text-orange-400 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 9V7a5 5 0 00-10 0v2a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2z"/></svg>
-          Pending Leave Applications
-        </h2>
-        <div id="managerAppsList" class="space-y-4">
-          <!-- Leave applications list renders here -->
+      <!-- Manager Applications Panel -->
+      <section id="managerAppsPanel" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="material-symbols-rounded">approval_delegation</span>
+            Pending Leave Applications
+          </h2>
+          <p class="panel-subtitle">Review requests, add remarks, and take action swiftly.</p>
         </div>
-        <!-- Who is on Leave Today -->
-      <div id="onLeaveTodayPanel" class="mb-8 mt-1">
-       <div class="flex">  
-          <svg class="h-8 w-8 text-red-500 mb-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <h3 class="text-lg font-bold mb-3 ml-1">On Leave Today</h3> 
-        </div>
-        <div id="onLeaveTodayList" class="flex flex-wrap gap-4"></div>
-      </div>
-        <!-- ================= NEW: Upcoming Approved Leaves Section ================= -->
-        <h2 class="font-semibold text-lg mt-10 mb-2 flex items-center">
-          <svg class="h-7 w-7 text-green-500 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
-          Upcoming Approved Leaves (Next 1 Month)
-        </h2>
-        <div id="managerUpcomingList" class="space-y-4">
-          <!-- Approved upcoming leaves will be rendered here by JS -->
-        </div>
-        <!-- ================= END NEW SECTION ================= -->
-      </div>
-      <!-- ================= END MANAGER PANEL ================= -->
 
-      <!-- ================ LEAVE REPORT PANEL ================= -->
-      <div id="leaveReportPanel" class="hidden bg-white shadow-lg rounded-2xl p-6">
-        <h2 class="font-semibold text-xl mb-6 flex items-center">
-          <svg class="h-8 w-8 text-purple-400 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/></svg>
-          Leave Report
-        </h2>
-        <div class="mb-4">
-          <button id="exportLeavesBtn" class="bg-blue-500 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-600 transition">Export Leaves</button>
+        <div id="managerAppsList" class="list-stack"></div>
+
+        <div class="md-card highlight-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">today</span>
+            On Leave Today
+          </div>
+          <div id="onLeaveTodayList"></div>
         </div>
-        <div class="overflow-x-auto" style="overflow-x:auto;">
-          <table id="leaveReportTable" class="min-w-max w-full table-auto border border-gray-400 divide-y-2 divide-gray-400 divide-x whitespace-nowrap bg-white rounded-lg shadow">
+
+        <div class="md-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">calendar_clock</span>
+            Upcoming Approved Leaves (Next 30 Days)
+          </div>
+          <div id="managerUpcomingList"></div>
+        </div>
+      </section>
+
+      <!-- Leave Report Panel -->
+      <section id="leaveReportPanel" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="material-symbols-rounded">insights</span>
+            Leave Report
+          </h2>
+          <p class="panel-subtitle">Export snapshots, explore calendar activity, and track leave totals.</p>
+        </div>
+
+        <div class="list-card__actions" style="justify-content:flex-start;">
+          <button id="exportLeavesBtn" class="md-button md-button--outlined">
+            <span class="material-symbols-rounded">file_download</span>
+            Export Leaves
+          </button>
+        </div>
+
+        <div class="md-card" style="overflow-x:auto;">
+          <table id="leaveReportTable" class="data-table">
             <thead>
               <tr>
-                <th class="px-4 py-2 font-medium bg-gray-50">Name</th>
-                <th class="px-4 py-2 font-medium bg-gray-50">Title</th>
-                <th class="px-4 py-2 font-medium bg-gray-50">Location</th>
-                <th class="px-4 py-2 font-medium bg-gray-50">Total Days</th>
-                <th class="px-4 py-2 font-medium bg-gray-50">Breakdown</th>
+                <th>Name</th>
+                <th>Title</th>
+                <th>Location</th>
+                <th>Total Days</th>
+                <th>Breakdown</th>
               </tr>
             </thead>
             <tbody id="leaveReportBody"></tbody>
           </table>
         </div>
-        <div id="calendarSection" class="my-6">
-          <div class="flex items-center justify-between mb-2">
-            <button id="calPrev" class="px-3 py-1 bg-gray-200 rounded">Prev</button>
-            <h3 id="calMonth" class="font-semibold text-lg"></h3>
-            <button id="calNext" class="px-3 py-1 bg-gray-200 rounded">Next</button>
-          </div>
-          <div id="calendarHeader" class="grid grid-cols-7 gap-px bg-gray-300 text-center text-sm font-medium">
-            <div class="bg-gray-100 py-1">Sun</div>
-            <div class="bg-blue-100 py-1">Mon</div>
-            <div class="bg-blue-100 py-1">Tue</div>
-            <div class="bg-blue-100 py-1">Wed</div>
-            <div class="bg-blue-100 py-1">Thu</div>
-            <div class="bg-blue-100 py-1">Fri</div>
-            <div class="bg-gray-100 py-1">Sat</div>
-          </div>
-          <div id="leaveCalendar" class="grid grid-cols-7 gap-px bg-gray-300 text-center"></div>
-        </div>
-        <div class="flex flex-wrap items-end gap-2 my-4">
-          <label class="flex flex-col">
-            <span class="text-sm font-semibold mb-1">Start</span>
-            <input type="date" id="reportStart" class="p-2 border rounded">
-          </label>
-          <label class="flex flex-col">
-            <span class="text-sm font-semibold mb-1">End</span>
-            <input type="date" id="reportEnd" class="p-2 border rounded">
-          </label>
-          <button id="reportApply" class="bg-green-600 text-white px-4 py-2 rounded">Apply</button>
-          <button id="reportWeek" class="bg-gray-200 px-3 py-2 rounded">Past Week</button>
-          <button id="reportMonth" class="bg-gray-200 px-3 py-2 rounded">Past 30 Days</button>
-        </div>
-        <div id="leaveRangeCards" class="mt-6 flex flex-wrap gap-4"></div>
-      </div>
-      <!-- ============== END LEAVE REPORT PANEL ================= -->
 
-    </div>
+        <div id="calendarSection">
+          <div class="calendar-controls">
+            <button id="calPrev" class="md-button md-button--text md-button--small">
+              <span class="material-symbols-rounded">chevron_left</span>
+              Previous
+            </button>
+            <h3 id="calMonth" class="panel-title" style="font-size:1.1rem;"></h3>
+            <button id="calNext" class="md-button md-button--text md-button--small">
+              Next
+              <span class="material-symbols-rounded">chevron_right</span>
+            </button>
+          </div>
+          <div id="calendarHeader" class="calendar-grid">
+            <div class="text-muted">Sun</div>
+            <div class="text-muted">Mon</div>
+            <div class="text-muted">Tue</div>
+            <div class="text-muted">Wed</div>
+            <div class="text-muted">Thu</div>
+            <div class="text-muted">Fri</div>
+            <div class="text-muted">Sat</div>
+          </div>
+          <div id="leaveCalendar" class="calendar-grid"></div>
+        </div>
+
+        <div class="range-actions">
+          <label>
+            Start
+            <input type="date" id="reportStart">
+          </label>
+          <label>
+            End
+            <input type="date" id="reportEnd">
+          </label>
+          <button id="reportApply" class="md-button md-button--filled md-button--small">
+            <span class="material-symbols-rounded">tune</span>
+            Apply
+          </button>
+          <button id="reportWeek" class="md-button md-button--outlined md-button--small">Past Week</button>
+          <button id="reportMonth" class="md-button md-button--outlined md-button--small">Past 30 Days</button>
+        </div>
+
+        <div id="leaveRangeCards"></div>
+      </section>
+    </main>
   </div>
+
+  <script>
+    function toggleHalfDayPeriod() {
+      const checkbox = document.getElementById('halfDay');
+      const period = document.getElementById('halfDayPeriod');
+      if (checkbox && period) {
+        period.classList.toggle('hidden', !checkbox.checked);
+      }
+    }
+  </script>
   <script src="index.js"></script>
 </body>
 </html>
