@@ -980,7 +980,13 @@ body {
 .calendar-date {
   font-weight: 700;
   font-size: 0.95rem;
-  color: #1d4ed8;
+  color: #f8fafc;
+  background: #1d4ed8;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  line-height: 1.2;
+  box-shadow: 0 6px 12px rgba(29, 78, 216, 0.12);
 }
 
 .calendar-names {
