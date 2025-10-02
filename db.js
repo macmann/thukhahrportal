@@ -18,25 +18,37 @@ const db = {
   data: null,
   async read() {
     await init();
-    const [employees, applications, users] = await Promise.all([
+    const [employees, applications, users, positions, candidates] = await Promise.all([
       database.collection('employees').find().toArray(),
       database.collection('applications').find().toArray(),
-      database.collection('users').find().toArray()
+      database.collection('users').find().toArray(),
+      database.collection('positions').find().toArray(),
+      database.collection('candidates').find().toArray()
     ]);
-    this.data = { employees, applications, users };
+    this.data = { employees, applications, users, positions, candidates };
   },
   async write() {
     if (!this.data) return;
     await init();
-    const { employees = [], applications = [], users = [] } = this.data;
+    const {
+      employees = [],
+      applications = [],
+      users = [],
+      positions = [],
+      candidates = []
+    } = this.data;
     await Promise.all([
       database.collection('employees').deleteMany({}),
       database.collection('applications').deleteMany({}),
-      database.collection('users').deleteMany({})
+      database.collection('users').deleteMany({}),
+      database.collection('positions').deleteMany({}),
+      database.collection('candidates').deleteMany({})
     ]);
     if (employees.length) await database.collection('employees').insertMany(employees);
     if (applications.length) await database.collection('applications').insertMany(applications);
     if (users.length) await database.collection('users').insertMany(users);
+    if (positions.length) await database.collection('positions').insertMany(positions);
+    if (candidates.length) await database.collection('candidates').insertMany(candidates);
   }
 };
 
