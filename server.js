@@ -9,6 +9,9 @@ const { parse } = require('csv-parse/sync');
 
 const app = express();
 
+// Payload limit for incoming requests (default 1 MB)
+const BODY_LIMIT = process.env.BODY_LIMIT || '1mb';
+
 // Default admin credentials (can be overridden with env vars)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@brillar.io';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
@@ -67,8 +70,8 @@ const CANDIDATE_STATUSES = [
   'Hired'
 ];
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: BODY_LIMIT }));
+app.use(bodyParser.urlencoded({ limit: BODY_LIMIT, extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---- AUTH ----
