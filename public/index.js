@@ -4,6 +4,12 @@ let currentUser = null;
 let calendarCurrent = new Date();
 let empSearchTerm = '';
 
+const PIPELINE_STATUSES = ['New', 'Selected for Interview', 'Rejected', 'Hired'];
+let recruitmentPositions = [];
+let recruitmentCandidates = [];
+let recruitmentActivePositionId = null;
+let recruitmentInitialized = false;
+
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   if (params.get('token')) {
@@ -89,21 +95,35 @@ function apiFetch(path, options = {}) {
   return fetch(API + path, options);
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch] || ch));
+}
+
 // Tab switching logic
 function showPanel(name) {
   const portalBtn   = document.getElementById('tabPortal');
   const manageBtn   = document.getElementById('tabManage');
+  const recruitmentBtn = document.getElementById('tabRecruitment');
   const managerBtn  = document.getElementById('tabManagerApps');
   const reportBtn   = document.getElementById('tabLeaveReport');
   const portalPanel = document.getElementById('portalPanel');
   const managePanel = document.getElementById('managePanel');
+  const recruitmentPanel = document.getElementById('recruitmentPanel');
   const managerPanel = document.getElementById('managerAppsPanel');
   const reportPanel  = document.getElementById('leaveReportPanel');
 
-  [portalBtn, manageBtn, managerBtn, reportBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
+  [portalBtn, manageBtn, recruitmentBtn, managerBtn, reportBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
 
   portalPanel.classList.add('hidden');
   managePanel.classList.add('hidden');
+  recruitmentPanel.classList.add('hidden');
   managerPanel.classList.add('hidden');
   reportPanel.classList.add('hidden');
 
@@ -114,6 +134,17 @@ function showPanel(name) {
   if (name === 'manage') {
     managePanel.classList.remove('hidden');
     manageBtn.classList.add('active-tab');
+  }
+  if (name === 'recruitment') {
+    recruitmentPanel.classList.remove('hidden');
+    recruitmentBtn.classList.add('active-tab');
+    if (currentUser?.role === 'manager') {
+      if (recruitmentInitialized) {
+        loadRecruitmentPositions();
+      } else {
+        initRecruitment();
+      }
+    }
   }
   if (name === 'managerApps') {
     managerPanel.classList.remove('hidden');
@@ -135,13 +166,366 @@ function showPanel(name) {
 function toggleTabsByRole() {
   if (currentUser && currentUser.role === 'manager') {
     document.getElementById('tabManage').classList.remove('hidden');
+    document.getElementById('tabRecruitment').classList.remove('hidden');
     document.getElementById('tabManagerApps').classList.remove('hidden');
     document.getElementById('tabLeaveReport').classList.remove('hidden');
   } else {
     document.getElementById('tabManage').classList.add('hidden');
+    document.getElementById('tabRecruitment').classList.add('hidden');
     document.getElementById('tabManagerApps').classList.add('hidden');
     document.getElementById('tabLeaveReport').classList.add('hidden');
   }
+}
+
+async function initRecruitment() {
+  if (!currentUser || currentUser.role !== 'manager') return;
+  if (recruitmentInitialized) return;
+  recruitmentInitialized = true;
+
+  const positionForm = document.getElementById('positionForm');
+  if (positionForm) positionForm.addEventListener('submit', onPositionSubmit);
+
+  const candidateForm = document.getElementById('candidateForm');
+  if (candidateForm) candidateForm.addEventListener('submit', onCandidateSubmit);
+
+  const positionSelect = document.getElementById('candidatePositionSelect');
+  if (positionSelect) positionSelect.addEventListener('change', onCandidatePositionChange);
+
+  const positionsContainer = document.getElementById('positionsList');
+  if (positionsContainer) positionsContainer.addEventListener('click', onPositionsListClick);
+
+  const candidateTable = document.getElementById('candidateTableBody');
+  if (candidateTable) {
+    candidateTable.addEventListener('change', onCandidateStatusChange);
+    candidateTable.addEventListener('click', onCandidateTableClick);
+  }
+
+  await loadRecruitmentPositions();
+}
+
+async function loadRecruitmentPositions() {
+  if (!currentUser || currentUser.role !== 'manager') return;
+  const data = await getJSON('/recruitment/positions');
+  recruitmentPositions = Array.isArray(data) ? data : [];
+  recruitmentPositions.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  if (recruitmentPositions.length) {
+    const exists = recruitmentPositions.some(p => p.id == recruitmentActivePositionId);
+    recruitmentActivePositionId = exists ? recruitmentActivePositionId : recruitmentPositions[0].id;
+  } else {
+    recruitmentActivePositionId = null;
+  }
+
+  renderRecruitmentPositions();
+  updateCandidatePositionSelect();
+
+  if (recruitmentActivePositionId) {
+    await loadRecruitmentCandidates(recruitmentActivePositionId);
+  } else {
+    recruitmentCandidates = [];
+    renderRecruitmentCandidates();
+  }
+}
+
+function renderRecruitmentPositions() {
+  const container = document.getElementById('positionsList');
+  if (!container) return;
+  if (!recruitmentPositions.length) {
+    container.innerHTML = '<p class="text-muted" style="font-style: italic;">No positions yet. Add your first opening to start sourcing talent.</p>';
+    updateCandidateFormAvailability();
+    return;
+  }
+  const markup = recruitmentPositions.map(pos => {
+    const isActive = pos.id == recruitmentActivePositionId;
+    const created = formatRecruitmentDate(pos.createdAt);
+    const metaParts = [];
+    if (pos.department) metaParts.push(escapeHtml(pos.department));
+    if (created) metaParts.push(escapeHtml(created));
+    const meta = metaParts.length ? `<div class="position-item__meta">${metaParts.join(' • ')}</div>` : '';
+    const description = pos.description ? `<div class="position-item__description">${escapeHtml(pos.description)}</div>` : '';
+    return `
+      <button type="button" class="position-item${isActive ? ' position-item--active' : ''}" data-position-id="${pos.id}">
+        <span class="material-symbols-rounded position-item__icon">work</span>
+        <div class="position-item__content">
+          <div class="position-item__title">${escapeHtml(pos.title)}</div>
+          ${meta}
+          ${description}
+        </div>
+        <span class="material-symbols-rounded position-item__chevron">chevron_right</span>
+      </button>
+    `;
+  }).join('');
+  container.innerHTML = markup;
+  updateCandidateFormAvailability();
+}
+
+function updateCandidatePositionSelect() {
+  const select = document.getElementById('candidatePositionSelect');
+  if (!select) return;
+  if (!recruitmentPositions.length) {
+    select.innerHTML = '<option value="">No positions available</option>';
+    select.value = '';
+    return;
+  }
+  const options = recruitmentPositions.map(pos => {
+    const label = pos.department ? `${escapeHtml(pos.title)} • ${escapeHtml(pos.department)}` : escapeHtml(pos.title);
+    return `<option value="${pos.id}">${label}</option>`;
+  }).join('');
+  select.innerHTML = options;
+  if (recruitmentActivePositionId) {
+    select.value = recruitmentActivePositionId;
+  } else {
+    select.selectedIndex = 0;
+    recruitmentActivePositionId = Number(select.value);
+  }
+}
+
+function updateCandidateFormAvailability() {
+  const form = document.getElementById('candidateForm');
+  if (!form) return;
+  const hasPositions = recruitmentPositions.length > 0;
+  form.querySelectorAll('input, select, button').forEach(el => {
+    el.disabled = !hasPositions;
+  });
+}
+
+function onPositionsListClick(ev) {
+  const target = ev.target.closest('[data-position-id]');
+  if (!target) return;
+  const id = Number(target.getAttribute('data-position-id'));
+  if (Number.isNaN(id)) return;
+  recruitmentActivePositionId = id;
+  updateCandidatePositionSelect();
+  renderRecruitmentPositions();
+  loadRecruitmentCandidates(recruitmentActivePositionId);
+}
+
+function onCandidatePositionChange(ev) {
+  const id = Number(ev.target.value);
+  recruitmentActivePositionId = Number.isNaN(id) ? null : id;
+  renderRecruitmentPositions();
+  if (recruitmentActivePositionId) {
+    loadRecruitmentCandidates(recruitmentActivePositionId);
+  } else {
+    recruitmentCandidates = [];
+    renderRecruitmentCandidates();
+  }
+}
+
+async function onPositionSubmit(ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const formData = new FormData(form);
+  const payload = {
+    title: (formData.get('title') || '').toString().trim(),
+    department: (formData.get('department') || '').toString().trim(),
+    description: (formData.get('description') || '').toString().trim()
+  };
+  if (!payload.title) {
+    alert('Position title is required');
+    return;
+  }
+  try {
+    const res = await apiFetch('/recruitment/positions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Failed');
+    form.reset();
+    await loadRecruitmentPositions();
+  } catch (err) {
+    alert('Failed to save position. Please try again.');
+  }
+}
+
+async function onCandidateSubmit(ev) {
+  ev.preventDefault();
+  if (!recruitmentPositions.length) {
+    alert('Create a position before adding candidates.');
+    return;
+  }
+  const form = ev.target;
+  const formData = new FormData(form);
+  const positionId = Number(formData.get('positionId'));
+  const name = (formData.get('name') || '').toString().trim();
+  const contact = (formData.get('contact') || '').toString().trim();
+  const file = formData.get('cv');
+  if (!positionId || Number.isNaN(positionId)) {
+    alert('Please choose a position.');
+    return;
+  }
+  if (!name) {
+    alert('Candidate name is required.');
+    return;
+  }
+  if (!contact) {
+    alert('Contact details are required.');
+    return;
+  }
+  if (!file || !file.size) {
+    alert('Please upload a CV.');
+    return;
+  }
+  try {
+    const base64 = await fileToBase64(file);
+    const payload = {
+      positionId,
+      name,
+      contact,
+      cv: {
+        filename: file.name,
+        contentType: file.type,
+        data: base64
+      }
+    };
+    const res = await apiFetch('/recruitment/candidates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Failed');
+    form.reset();
+    recruitmentActivePositionId = positionId;
+    const positionSelect = document.getElementById('candidatePositionSelect');
+    if (positionSelect) positionSelect.value = positionId;
+    await loadRecruitmentCandidates(positionId);
+  } catch (err) {
+    alert('Failed to add candidate. Please try again.');
+  }
+}
+
+async function loadRecruitmentCandidates(positionId) {
+  if (!positionId) {
+    recruitmentCandidates = [];
+    renderRecruitmentCandidates();
+    return;
+  }
+  const data = await getJSON(`/recruitment/candidates?positionId=${encodeURIComponent(positionId)}`);
+  recruitmentCandidates = Array.isArray(data) ? data : [];
+  renderRecruitmentCandidates();
+}
+
+function renderRecruitmentCandidates() {
+  const body = document.getElementById('candidateTableBody');
+  if (!body) return;
+  if (!recruitmentActivePositionId) {
+    body.innerHTML = '<tr><td colspan="5" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td></tr>';
+    return;
+  }
+  if (!recruitmentCandidates.length) {
+    body.innerHTML = '<tr><td colspan="5" class="text-muted" style="padding:16px; font-style: italic;">No candidates yet for this position.</td></tr>';
+    return;
+  }
+  const rows = recruitmentCandidates.map(candidate => {
+    const statusOptions = PIPELINE_STATUSES.map(status => `<option value="${status}" ${status === candidate.status ? 'selected' : ''}>${status}</option>`).join('');
+    const contact = candidate.contact ? escapeHtml(candidate.contact) : '<span class="text-muted">Not provided</span>';
+    const created = formatRecruitmentDateTime(candidate.createdAt);
+    const fileLabel = candidate.cv?.filename ? escapeHtml(candidate.cv.filename) : 'Download CV';
+    return `
+      <tr>
+        <td>${escapeHtml(candidate.name)}</td>
+        <td>${contact}</td>
+        <td>
+          <select class="md-select candidate-status" data-candidate-id="${candidate.id}">
+            ${statusOptions}
+          </select>
+        </td>
+        <td>
+          <button type="button" class="md-button md-button--tonal md-button--small candidate-download" data-candidate-id="${candidate.id}">
+            <span class="material-symbols-rounded">download</span>
+            Download
+          </button>
+          <div class="text-muted" style="font-size: 12px;">${fileLabel}</div>
+        </td>
+        <td>${created || '-'}</td>
+      </tr>
+    `;
+  }).join('');
+  body.innerHTML = rows;
+}
+
+async function onCandidateStatusChange(ev) {
+  const select = ev.target.closest('.candidate-status');
+  if (!select) return;
+  const id = select.getAttribute('data-candidate-id');
+  const status = select.value;
+  if (!id || !status) return;
+  try {
+    const res = await apiFetch(`/recruitment/candidates/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error('Failed');
+    await loadRecruitmentCandidates(recruitmentActivePositionId);
+  } catch (err) {
+    alert('Failed to update candidate status.');
+    await loadRecruitmentCandidates(recruitmentActivePositionId);
+  }
+}
+
+async function onCandidateTableClick(ev) {
+  const button = ev.target.closest('.candidate-download');
+  if (!button) return;
+  const id = button.getAttribute('data-candidate-id');
+  if (!id) return;
+  button.disabled = true;
+  try {
+    await downloadCandidateCv(id);
+  } catch (err) {
+    alert('Unable to download CV at the moment.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function downloadCandidateCv(id) {
+  const res = await apiFetch(`/recruitment/candidates/${id}/cv`);
+  if (!res.ok) throw new Error('Failed');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const candidate = recruitmentCandidates.find(c => c.id == id);
+  const filename = candidate?.cv?.filename || `candidate-${id}`;
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatRecruitmentDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatRecruitmentDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' +
+    date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        const base64 = result.split(',')[1] || '';
+        resolve(base64);
+      } else {
+        resolve('');
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error('File read failed'));
+    reader.readAsDataURL(file);
+  });
 }
 
 let pendingApply = null;
@@ -156,6 +540,8 @@ async function init() {
 
   document.getElementById('tabPortal').onclick = () => showPanel('portal');
   document.getElementById('tabManage').onclick = () => showPanel('manage');
+  const recruitmentTab = document.getElementById('tabRecruitment');
+  if (recruitmentTab) recruitmentTab.onclick = () => showPanel('recruitment');
   const managerTab = document.getElementById('tabManagerApps');
   if (managerTab) managerTab.onclick = () => showPanel('managerApps');
   const reportTab = document.getElementById('tabLeaveReport');
@@ -258,6 +644,10 @@ async function init() {
   if (empCancelBtn) empCancelBtn.onclick = onEmpCancel;
   const empForm = document.getElementById('empForm');
   if (empForm) empForm.onsubmit = onEmpFormSubmit;
+
+  if (currentUser && currentUser.role === 'manager') {
+    await initRecruitment();
+  }
 
   await loadEmployeesPortal();
   await loadEmployeesManage();

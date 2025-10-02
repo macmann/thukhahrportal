@@ -60,6 +60,13 @@ function genToken() {
   return Math.random().toString(36).slice(2) + Date.now();
 }
 
+const CANDIDATE_STATUSES = [
+  'New',
+  'Selected for Interview',
+  'Rejected',
+  'Hired'
+];
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -300,6 +307,121 @@ init().then(() => {
     db.data.employees.splice(idx, 1);
     await db.write();
     res.status(204).end();
+  });
+
+  // ========== RECRUITMENT PIPELINE ==========
+  app.get('/recruitment/positions', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.positions = db.data.positions || [];
+    res.json(db.data.positions);
+  });
+
+  app.post('/recruitment/positions', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const title = (req.body.title || '').trim();
+    const department = (req.body.department || '').trim();
+    const description = (req.body.description || '').trim();
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+    db.data.positions = db.data.positions || [];
+    const id = Date.now();
+    const newPosition = {
+      id,
+      title,
+      department,
+      description,
+      createdAt: new Date().toISOString()
+    };
+    db.data.positions.push(newPosition);
+    await db.write();
+    res.status(201).json(newPosition);
+  });
+
+  app.get('/recruitment/candidates', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const { positionId } = req.query;
+    db.data.candidates = db.data.candidates || [];
+    let list = db.data.candidates;
+    if (positionId) {
+      list = list.filter(c => c.positionId == positionId);
+    }
+    const sanitized = list.map(c => {
+      const { cv, ...rest } = c;
+      return {
+        ...rest,
+        cv: cv ? { filename: cv.filename, contentType: cv.contentType } : null
+      };
+    });
+    res.json(sanitized);
+  });
+
+  app.post('/recruitment/candidates', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const { positionId, name, contact, cv } = req.body;
+    const status = CANDIDATE_STATUSES.includes(req.body.status) ? req.body.status : 'New';
+    if (!positionId) return res.status(400).json({ error: 'Position is required' });
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+    if (!contact || !contact.trim()) return res.status(400).json({ error: 'Contact is required' });
+    if (!cv || !cv.data || !cv.filename) {
+      return res.status(400).json({ error: 'CV upload is required' });
+    }
+    db.data.positions = db.data.positions || [];
+    const positionExists = db.data.positions.some(p => p.id == positionId);
+    if (!positionExists) {
+      return res.status(404).json({ error: 'Position not found' });
+    }
+    db.data.candidates = db.data.candidates || [];
+    const id = Date.now();
+    const now = new Date().toISOString();
+    const candidate = {
+      id,
+      positionId: Number(positionId),
+      name: name.trim(),
+      contact: (contact || '').trim(),
+      status,
+      cv: {
+        filename: cv.filename,
+        contentType: cv.contentType || 'application/octet-stream',
+        data: cv.data
+      },
+      createdAt: now,
+      updatedAt: now
+    };
+    db.data.candidates.push(candidate);
+    await db.write();
+    const { cv: storedCv, ...rest } = candidate;
+    res.status(201).json({ ...rest, cv: { filename: storedCv.filename, contentType: storedCv.contentType } });
+  });
+
+  app.patch('/recruitment/candidates/:id/status', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const { status } = req.body;
+    if (!CANDIDATE_STATUSES.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    db.data.candidates = db.data.candidates || [];
+    const candidate = db.data.candidates.find(c => c.id == req.params.id);
+    if (!candidate) return res.status(404).json({ error: 'Candidate not found' });
+    candidate.status = status;
+    candidate.updatedAt = new Date().toISOString();
+    await db.write();
+    const { cv, ...rest } = candidate;
+    res.json({ ...rest, cv: cv ? { filename: cv.filename, contentType: cv.contentType } : null });
+  });
+
+  app.get('/recruitment/candidates/:id/cv', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.candidates = db.data.candidates || [];
+    const candidate = db.data.candidates.find(c => c.id == req.params.id);
+    if (!candidate || !candidate.cv || !candidate.cv.data) {
+      return res.status(404).json({ error: 'CV not found' });
+    }
+    const filename = (candidate.cv.filename || 'cv').replace(/"/g, '');
+    const buffer = Buffer.from(candidate.cv.data, 'base64');
+    res.setHeader('Content-Type', candidate.cv.contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   });
 
   // ========== APPLICATIONS ==========
