@@ -4,11 +4,15 @@ let currentUser = null;
 let calendarCurrent = new Date();
 let empSearchTerm = '';
 
-const PIPELINE_STATUSES = ['New', 'Selected for Interview', 'Rejected', 'Hired'];
+const PIPELINE_STATUSES = ['New', 'Selected for Interview', 'Interview Completed', 'Rejected', 'Hired'];
 let recruitmentPositions = [];
 let recruitmentCandidates = [];
 let recruitmentActivePositionId = null;
 let recruitmentInitialized = false;
+let recruitmentActiveCommentCandidateId = null;
+let recruitmentActiveCommentCandidateName = '';
+let recruitmentCandidateComments = [];
+let recruitmentEditingCommentId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
@@ -199,6 +203,15 @@ async function initRecruitment() {
     candidateTable.addEventListener('change', onCandidateStatusChange);
     candidateTable.addEventListener('click', onCandidateTableClick);
   }
+
+  const commentsCloseBtn = document.getElementById('commentsModalCloseBtn');
+  if (commentsCloseBtn) commentsCloseBtn.onclick = closeCommentsModal;
+
+  const commentsList = document.getElementById('commentsList');
+  if (commentsList) commentsList.addEventListener('click', onCommentsListClick);
+
+  const commentFormEl = document.getElementById('commentForm');
+  if (commentFormEl) commentFormEl.addEventListener('submit', onCommentSubmit);
 
   await loadRecruitmentPositions();
 }
@@ -410,11 +423,11 @@ function renderRecruitmentCandidates() {
   const body = document.getElementById('candidateTableBody');
   if (!body) return;
   if (!recruitmentActivePositionId) {
-    body.innerHTML = '<tr><td colspan="5" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td></tr>';
     return;
   }
   if (!recruitmentCandidates.length) {
-    body.innerHTML = '<tr><td colspan="5" class="text-muted" style="padding:16px; font-style: italic;">No candidates yet for this position.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="text-muted" style="padding:16px; font-style: italic;">No candidates yet for this position.</td></tr>';
     return;
   }
   const rows = recruitmentCandidates.map(candidate => {
@@ -422,6 +435,8 @@ function renderRecruitmentCandidates() {
     const contact = candidate.contact ? escapeHtml(candidate.contact) : '<span class="text-muted">Not provided</span>';
     const created = formatRecruitmentDateTime(candidate.createdAt);
     const fileLabel = candidate.cv?.filename ? escapeHtml(candidate.cv.filename) : 'Download CV';
+    const commentCount = Number.isFinite(candidate.commentCount) ? candidate.commentCount : 0;
+    const commentLabel = commentCount === 1 ? '1 Comment' : `${commentCount} Comments`;
     return `
       <tr>
         <td>${escapeHtml(candidate.name)}</td>
@@ -430,6 +445,12 @@ function renderRecruitmentCandidates() {
           <select class="md-select candidate-status" data-candidate-id="${candidate.id}">
             ${statusOptions}
           </select>
+        </td>
+        <td>
+          <button type="button" class="md-button md-button--outlined md-button--small candidate-comments" data-candidate-id="${candidate.id}" data-candidate-name="${escapeHtml(candidate.name)}">
+            <span class="material-symbols-rounded">comment</span>
+            ${commentLabel}
+          </button>
         </td>
         <td>
           <button type="button" class="md-button md-button--tonal md-button--small candidate-download" data-candidate-id="${candidate.id}">
@@ -466,17 +487,27 @@ async function onCandidateStatusChange(ev) {
 }
 
 async function onCandidateTableClick(ev) {
-  const button = ev.target.closest('.candidate-download');
-  if (!button) return;
-  const id = button.getAttribute('data-candidate-id');
-  if (!id) return;
-  button.disabled = true;
-  try {
-    await downloadCandidateCv(id);
-  } catch (err) {
-    alert('Unable to download CV at the moment.');
-  } finally {
-    button.disabled = false;
+  const downloadButton = ev.target.closest('.candidate-download');
+  if (downloadButton) {
+    const id = downloadButton.getAttribute('data-candidate-id');
+    if (!id) return;
+    downloadButton.disabled = true;
+    try {
+      await downloadCandidateCv(id);
+    } catch (err) {
+      alert('Unable to download CV at the moment.');
+    } finally {
+      downloadButton.disabled = false;
+    }
+    return;
+  }
+
+  const commentButton = ev.target.closest('.candidate-comments');
+  if (commentButton) {
+    const id = commentButton.getAttribute('data-candidate-id');
+    const name = commentButton.getAttribute('data-candidate-name') || '';
+    if (!id) return;
+    openCandidateCommentsModal(Number(id), name);
   }
 }
 
@@ -494,6 +525,168 @@ async function downloadCandidateCv(id) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+async function openCandidateCommentsModal(candidateId, candidateName) {
+  recruitmentActiveCommentCandidateId = candidateId;
+  recruitmentActiveCommentCandidateName = candidateName || '';
+  recruitmentCandidateComments = [];
+  recruitmentEditingCommentId = null;
+  updateCommentSubmitLabel();
+  const nameEl = document.getElementById('commentsModalCandidateName');
+  if (nameEl) nameEl.textContent = candidateName || '-';
+  const list = document.getElementById('commentsList');
+  if (list) {
+    list.classList.add('text-muted');
+    list.innerHTML = '<p style="font-style: italic;">Loading comments...</p>';
+  }
+  const modal = document.getElementById('commentsModal');
+  if (modal) modal.classList.remove('hidden');
+  const textarea = document.getElementById('commentText');
+  if (textarea) {
+    textarea.value = '';
+    textarea.focus();
+  }
+  try {
+    const res = await apiFetch(`/recruitment/candidates/${candidateId}/comments`);
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    recruitmentCandidateComments = Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (list) {
+      list.innerHTML = '<p style="font-style: italic;">Unable to load comments right now.</p>';
+    }
+    return;
+  }
+  recruitmentCandidateComments.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  renderCandidateComments();
+}
+
+function closeCommentsModal() {
+  const modal = document.getElementById('commentsModal');
+  if (modal) modal.classList.add('hidden');
+  recruitmentActiveCommentCandidateId = null;
+  recruitmentActiveCommentCandidateName = '';
+  recruitmentCandidateComments = [];
+  recruitmentEditingCommentId = null;
+  updateCommentSubmitLabel();
+  const nameEl = document.getElementById('commentsModalCandidateName');
+  if (nameEl) nameEl.textContent = '-';
+  const list = document.getElementById('commentsList');
+  if (list) {
+    list.classList.add('text-muted');
+    list.innerHTML = '<p style="font-style: italic;">No comments yet.</p>';
+  }
+  const textarea = document.getElementById('commentText');
+  if (textarea) textarea.value = '';
+}
+
+function renderCandidateComments() {
+  const list = document.getElementById('commentsList');
+  if (!list) return;
+  if (!recruitmentCandidateComments.length) {
+    list.classList.add('text-muted');
+    list.innerHTML = '<p style="font-style: italic;">No comments yet. Be the first to add one.</p>';
+    return;
+  }
+  list.classList.remove('text-muted');
+  const markup = recruitmentCandidateComments.map(comment => {
+    const authorEmail = escapeHtml(comment.author?.email || 'Unknown');
+    const timestamp = formatRecruitmentDateTime(comment.updatedAt || comment.createdAt);
+    const edited = comment.updatedAt && comment.updatedAt !== comment.createdAt ? ' (edited)' : '';
+    const commentText = escapeHtml(comment.text || '').replace(/\n/g, '<br>');
+    const ownClass = comment.canEdit ? ' own-comment' : '';
+    const editButton = comment.canEdit ? `
+      <div class="comment-actions">
+        <button type="button" class="comment-edit" data-comment-id="${comment.id}">
+          <span class="material-symbols-rounded">edit</span>
+          Edit
+        </button>
+      </div>
+    ` : '';
+    return `
+      <div class="comment-item${ownClass}">
+        <div class="comment-item-meta">
+          <span>${authorEmail}</span>
+          <span>${timestamp || ''}${edited}</span>
+        </div>
+        <div class="comment-text">${commentText || '<span class="text-muted">(No content)</span>'}</div>
+        ${editButton}
+      </div>
+    `;
+  }).join('');
+  list.innerHTML = markup;
+}
+
+function updateCommentSubmitLabel() {
+  const label = document.querySelector('#commentSubmitBtn .comment-submit-label');
+  if (!label) return;
+  label.textContent = recruitmentEditingCommentId ? 'Update Comment' : 'Add Comment';
+}
+
+async function onCommentSubmit(ev) {
+  ev.preventDefault();
+  if (!recruitmentActiveCommentCandidateId) return;
+  const textarea = document.getElementById('commentText');
+  if (!textarea) return;
+  const text = textarea.value.trim();
+  if (!text) {
+    alert('Please enter a comment before submitting.');
+    return;
+  }
+  const payload = { text };
+  const candidateId = recruitmentActiveCommentCandidateId;
+  const commentId = recruitmentEditingCommentId;
+  const endpoint = commentId ? `/recruitment/candidates/${candidateId}/comments/${commentId}` : `/recruitment/candidates/${candidateId}/comments`;
+  const method = commentId ? 'PATCH' : 'POST';
+  let data;
+  try {
+    const res = await apiFetch(endpoint, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Failed');
+    data = await res.json();
+  } catch (err) {
+    alert('Unable to save the comment right now. Please try again.');
+    return;
+  }
+  if (data?.comment) {
+    const idx = recruitmentCandidateComments.findIndex(c => c.id == data.comment.id);
+    if (idx >= 0) {
+      recruitmentCandidateComments[idx] = data.comment;
+    } else {
+      recruitmentCandidateComments.push(data.comment);
+    }
+    recruitmentCandidateComments.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  }
+  if (typeof data?.commentCount === 'number') {
+    const candidate = recruitmentCandidates.find(c => c.id == candidateId);
+    if (candidate) candidate.commentCount = data.commentCount;
+    renderRecruitmentCandidates();
+  }
+  textarea.value = '';
+  recruitmentEditingCommentId = null;
+  updateCommentSubmitLabel();
+  renderCandidateComments();
+}
+
+function onCommentsListClick(ev) {
+  const editBtn = ev.target.closest('.comment-edit');
+  if (!editBtn) return;
+  const commentId = editBtn.getAttribute('data-comment-id');
+  if (!commentId) return;
+  const comment = recruitmentCandidateComments.find(c => c.id == commentId);
+  if (!comment || !comment.canEdit) return;
+  recruitmentEditingCommentId = comment.id;
+  const textarea = document.getElementById('commentText');
+  if (textarea) {
+    textarea.value = comment.text || '';
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
+  updateCommentSubmitLabel();
 }
 
 function formatRecruitmentDate(value) {

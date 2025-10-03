@@ -445,19 +445,45 @@
                   <th>Candidate</th>
                   <th>Contact</th>
                   <th>Status</th>
+                  <th>Comments</th>
                   <th>CV</th>
                   <th>Created</th>
                 </tr>
               </thead>
               <tbody id="candidateTableBody">
                 <tr>
-                  <td colspan="5" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td>
+                  <td colspan="6" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
       </section>
+
+      <div id="commentsModal" class="modal-backdrop hidden">
+        <div class="modal-card comments-modal">
+          <button type="button" id="commentsModalCloseBtn" class="modal-close material-symbols-rounded">close</button>
+          <h3 class="modal-title">
+            <span class="material-symbols-rounded">forum</span>
+            Candidate Comments
+          </h3>
+          <div class="comments-modal-header">
+            <div class="comments-modal-label">Candidate</div>
+            <div id="commentsModalCandidateName" class="comments-modal-name">-</div>
+          </div>
+          <div id="commentsList" class="comments-list text-muted">
+            <p style="font-style: italic;">Loading comments...</p>
+          </div>
+          <form id="commentForm" class="form-stack">
+            <label class="md-label" for="commentText">Add a comment</label>
+            <textarea id="commentText" class="md-textarea" rows="3" placeholder="Share feedback or interview notes" required></textarea>
+            <button id="commentSubmitBtn" type="submit" class="md-button md-button--filled md-button--small">
+              <span class="material-symbols-rounded">add_comment</span>
+              <span class="comment-submit-label">Add Comment</span>
+            </button>
+          </form>
+        </div>
+      </div>
 
       <!-- Manager Applications Panel -->
       <section id="managerAppsPanel" class="panel hidden">

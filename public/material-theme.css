@@ -601,6 +601,92 @@ body {
   gap: 12px;
 }
 
+.comments-modal {
+  width: min(560px, 100%);
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.comments-modal-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comments-modal-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(71, 85, 105, 0.85);
+}
+
+.comments-modal-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.88);
+}
+
+.comments-list {
+  flex: 1;
+  min-height: 120px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment-item {
+  background: rgba(241, 245, 249, 0.8);
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.comment-item.own-comment {
+  border-color: rgba(59, 130, 246, 0.65);
+  background: rgba(239, 246, 255, 0.92);
+}
+
+.comment-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: rgba(71, 85, 105, 0.85);
+}
+
+.comment-text {
+  font-size: 0.95rem;
+  color: rgba(15, 23, 42, 0.9);
+  line-height: 1.4;
+}
+
+.comment-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.comment-edit {
+  font-size: 0.75rem;
+  color: var(--md-sys-color-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+
+.comment-edit .material-symbols-rounded {
+  font-size: 16px;
+}
+
 #prevLeaves {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
