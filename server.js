@@ -66,9 +66,29 @@ function genToken() {
 const CANDIDATE_STATUSES = [
   'New',
   'Selected for Interview',
+  'Interview Completed',
   'Rejected',
   'Hired'
 ];
+
+function sanitizeComment(comment, currentUser) {
+  if (!comment) return null;
+  return {
+    id: comment.id,
+    text: comment.text,
+    createdAt: comment.createdAt,
+    updatedAt: comment.updatedAt,
+    author: {
+      id: comment.userId,
+      email: comment.userEmail
+    },
+    canEdit: Boolean(currentUser && comment.userId === currentUser.id)
+  };
+}
+
+function generateCommentId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
 
 app.use(bodyParser.json({ limit: BODY_LIMIT }));
 app.use(bodyParser.urlencoded({ limit: BODY_LIMIT, extended: true }));
@@ -350,9 +370,10 @@ init().then(() => {
       list = list.filter(c => c.positionId == positionId);
     }
     const sanitized = list.map(c => {
-      const { cv, ...rest } = c;
+      const { cv, comments = [], ...rest } = c;
       return {
         ...rest,
+        commentCount: comments.length,
         cv: cv ? { filename: cv.filename, contentType: cv.contentType } : null
       };
     });
@@ -388,13 +409,18 @@ init().then(() => {
         contentType: cv.contentType || 'application/octet-stream',
         data: cv.data
       },
+      comments: [],
       createdAt: now,
       updatedAt: now
     };
     db.data.candidates.push(candidate);
     await db.write();
-    const { cv: storedCv, ...rest } = candidate;
-    res.status(201).json({ ...rest, cv: { filename: storedCv.filename, contentType: storedCv.contentType } });
+    const { cv: storedCv, comments = [], ...rest } = candidate;
+    res.status(201).json({
+      ...rest,
+      commentCount: comments.length,
+      cv: { filename: storedCv.filename, contentType: storedCv.contentType }
+    });
   });
 
   app.patch('/recruitment/candidates/:id/status', authRequired, managerOnly, async (req, res) => {
@@ -409,8 +435,12 @@ init().then(() => {
     candidate.status = status;
     candidate.updatedAt = new Date().toISOString();
     await db.write();
-    const { cv, ...rest } = candidate;
-    res.json({ ...rest, cv: cv ? { filename: cv.filename, contentType: cv.contentType } : null });
+    const { cv, comments = [], ...rest } = candidate;
+    res.json({
+      ...rest,
+      commentCount: comments.length,
+      cv: cv ? { filename: cv.filename, contentType: cv.contentType } : null
+    });
   });
 
   app.get('/recruitment/candidates/:id/cv', authRequired, managerOnly, async (req, res) => {
@@ -425,6 +455,69 @@ init().then(() => {
     res.setHeader('Content-Type', candidate.cv.contentType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+  });
+
+  app.get('/recruitment/candidates/:id/comments', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.candidates = db.data.candidates || [];
+    const candidate = db.data.candidates.find(c => c.id == req.params.id);
+    if (!candidate) return res.status(404).json({ error: 'Candidate not found' });
+    candidate.comments = candidate.comments || [];
+    const comments = candidate.comments.map(comment => sanitizeComment(comment, req.user));
+    res.json(comments);
+  });
+
+  app.post('/recruitment/candidates/:id/comments', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const text = (req.body.text || '').trim();
+    if (!text) {
+      return res.status(400).json({ error: 'Comment text is required' });
+    }
+    db.data.candidates = db.data.candidates || [];
+    const candidate = db.data.candidates.find(c => c.id == req.params.id);
+    if (!candidate) return res.status(404).json({ error: 'Candidate not found' });
+    candidate.comments = candidate.comments || [];
+    const now = new Date().toISOString();
+    const comment = {
+      id: generateCommentId(),
+      text,
+      userId: req.user.id,
+      userEmail: req.user.email,
+      createdAt: now,
+      updatedAt: now
+    };
+    candidate.comments.push(comment);
+    candidate.updatedAt = now;
+    await db.write();
+    res.status(201).json({
+      comment: sanitizeComment(comment, req.user),
+      commentCount: candidate.comments.length
+    });
+  });
+
+  app.patch('/recruitment/candidates/:candidateId/comments/:commentId', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const text = (req.body.text || '').trim();
+    if (!text) {
+      return res.status(400).json({ error: 'Comment text is required' });
+    }
+    db.data.candidates = db.data.candidates || [];
+    const candidate = db.data.candidates.find(c => c.id == req.params.candidateId);
+    if (!candidate) return res.status(404).json({ error: 'Candidate not found' });
+    candidate.comments = candidate.comments || [];
+    const comment = candidate.comments.find(c => c.id == req.params.commentId);
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (comment.userId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only edit your own comments' });
+    }
+    comment.text = text;
+    comment.updatedAt = new Date().toISOString();
+    candidate.updatedAt = comment.updatedAt;
+    await db.write();
+    res.json({
+      comment: sanitizeComment(comment, req.user),
+      commentCount: candidate.comments.length
+    });
   });
 
   // ========== APPLICATIONS ==========
