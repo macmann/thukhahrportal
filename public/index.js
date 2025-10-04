@@ -1088,6 +1088,48 @@ async function init() {
       await loadEmployeesPortal();
     };
   }
+  const leaveCsvBtn = document.getElementById('leaveCsvUploadBtn');
+  const leaveCsvInput = document.getElementById('leaveCsvInput');
+  if (leaveCsvBtn && leaveCsvInput) {
+    leaveCsvBtn.onclick = () => leaveCsvInput.click();
+    leaveCsvInput.onchange = async ev => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const res = await apiFetch('/applications/bulk-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/csv' },
+          body: text
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to import leave data.');
+        }
+        const added = Number(data.added || 0);
+        const skipped = Number(data.skipped || 0);
+        const errors = Array.isArray(data.errors) ? data.errors : [];
+        let message = `Imported ${added} leave record${added === 1 ? '' : 's'}.`;
+        if (skipped) {
+          message += ` Skipped ${skipped} row${skipped === 1 ? '' : 's'}.`;
+        }
+        if (errors.length) {
+          message += `\n\nIssues:\n- ${errors.join('\n- ')}`;
+        }
+        alert(message);
+        await onEmployeeChange();
+        if (currentUser?.role === 'manager') {
+          await loadLeaveReport();
+          await loadLeaveCalendar();
+        }
+      } catch (err) {
+        console.error('Leave CSV import failed', err);
+        alert(err.message || 'Failed to import leave data.');
+      } finally {
+        ev.target.value = '';
+      }
+    };
+  }
   const exportBtn = document.getElementById('exportLeavesBtn');
   if (exportBtn) {
     exportBtn.onclick = async () => {

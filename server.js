@@ -607,6 +607,248 @@ init().then(async () => {
     res.json(apps);
   });
 
+  // ---- BULK LEAVE IMPORT ----
+  app.post(
+    '/applications/bulk-import',
+    authRequired,
+    managerOnly,
+    express.text({ type: '*/*' }),
+    async (req, res) => {
+      await db.read();
+      db.data.applications = db.data.applications || [];
+      db.data.employees = db.data.employees || [];
+
+      const rawCsv = (req.body || '').trim();
+      if (!rawCsv) {
+        return res.status(400).json({ error: 'CSV file is empty.' });
+      }
+
+      try {
+        const rows = parse(rawCsv, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true
+        });
+
+        if (!Array.isArray(rows) || !rows.length) {
+          return res.status(400).json({ error: 'No rows found in CSV file.' });
+        }
+
+        const normalizeKey = key =>
+          key
+            .toString()
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '');
+
+        function getColumnValue(row, candidates) {
+          const entries = Object.entries(row || {});
+          for (const candidate of candidates) {
+            const normalizedCandidate = normalizeKey(candidate);
+            for (const [key, value] of entries) {
+              const normalizedKey = normalizeKey(key);
+              if (
+                normalizedKey === normalizedCandidate ||
+                normalizedKey.includes(normalizedCandidate)
+              ) {
+                return typeof value === 'string' ? value.trim() : value;
+              }
+            }
+          }
+          return undefined;
+        }
+
+        function normalizeType(value) {
+          if (!value) return null;
+          const cleaned = value.toString().trim().toLowerCase();
+          const map = {
+            annual: 'annual',
+            casual: 'casual',
+            medical: 'medical',
+            sick: 'medical',
+            sickleave: 'medical',
+            medicalleave: 'medical',
+            annualleave: 'annual',
+            casualleave: 'casual'
+          };
+          const normalized = cleaned.replace(/\s+/g, '');
+          if (map[cleaned]) return map[cleaned];
+          if (map[normalized]) return map[normalized];
+          return ['annual', 'casual', 'medical'].find(type =>
+            normalized.includes(type)
+          );
+        }
+
+        function normalizeDate(value) {
+          if (!value) return null;
+
+          const toIso = (year, month, day) => {
+            if (
+              !Number.isInteger(year) ||
+              !Number.isInteger(month) ||
+              !Number.isInteger(day)
+            ) {
+              return null;
+            }
+            const date = new Date(Date.UTC(year, month - 1, day));
+            if (
+              date.getUTCFullYear() !== year ||
+              date.getUTCMonth() !== month - 1 ||
+              date.getUTCDate() !== day
+            ) {
+              return null;
+            }
+            return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          };
+
+          if (value instanceof Date && !Number.isNaN(value.getTime())) {
+            return toIso(
+              value.getUTCFullYear(),
+              value.getUTCMonth() + 1,
+              value.getUTCDate()
+            );
+          }
+
+          const str = value.toString().trim();
+          if (!str) return null;
+
+          const isoMatch = str.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+          if (isoMatch) {
+            const year = Number(isoMatch[1]);
+            const month = Number(isoMatch[2]);
+            const day = Number(isoMatch[3]);
+            return toIso(year, month, day);
+          }
+
+          const altMatch = str.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+          if (altMatch) {
+            let month = Number(altMatch[1]);
+            let day = Number(altMatch[2]);
+            let year = Number(altMatch[3]);
+            if (!Number.isFinite(month) || !Number.isFinite(day) || !Number.isFinite(year)) {
+              return null;
+            }
+            if (year < 100) {
+              year += 2000;
+            }
+            if (month > 12 && day <= 12) {
+              [month, day] = [day, month];
+            }
+            return toIso(year, month, day);
+          }
+
+          const parsed = new Date(str);
+          if (Number.isNaN(parsed.getTime())) return null;
+          return toIso(
+            parsed.getUTCFullYear(),
+            parsed.getUTCMonth() + 1,
+            parsed.getUTCDate()
+          );
+        }
+
+        const employeesByName = new Map();
+        db.data.employees.forEach(emp => {
+          const name = (emp.name || '').toString().trim().toLowerCase();
+          if (name && !employeesByName.has(name)) {
+            employeesByName.set(name, emp);
+          }
+        });
+
+        const existingKeys = new Set(
+          db.data.applications
+            .filter(app => app && app.employeeId && app.from && app.to && app.type)
+            .map(
+              app =>
+                `${app.employeeId}__${app.from}__${app.to}__${String(app.type).toLowerCase()}`
+            )
+        );
+
+        const now = Date.now();
+        let added = 0;
+        let skipped = 0;
+        const errors = [];
+
+        rows.forEach((row, index) => {
+          const nameValue = getColumnValue(row, ['name', 'employee name']);
+          const dateValue = getColumnValue(row, ['date', 'leave date']);
+          const typeValue = getColumnValue(row, ['type', 'leave type', 'type name']);
+          const reasonValue =
+            getColumnValue(row, ['reason', 'remarks', 'remark']) || 'Imported via CSV upload';
+
+          if (!nameValue || !dateValue || !typeValue) {
+            skipped += 1;
+            errors.push(
+              `Row ${index + 1}: Missing ${
+                !nameValue ? 'name' : !dateValue ? 'date' : 'type'
+              }.`
+            );
+            return;
+          }
+
+          const employee = employeesByName.get(nameValue.toLowerCase());
+          if (!employee) {
+            skipped += 1;
+            errors.push(`Row ${index + 1}: Employee "${nameValue}" not found.`);
+            return;
+          }
+
+          const normalizedType = normalizeType(typeValue);
+          if (!normalizedType) {
+            skipped += 1;
+            errors.push(`Row ${index + 1}: Unsupported leave type "${typeValue}".`);
+            return;
+          }
+
+          const isoDate = normalizeDate(dateValue);
+          if (!isoDate) {
+            skipped += 1;
+            errors.push(`Row ${index + 1}: Invalid date "${dateValue}".`);
+            return;
+          }
+
+          const key = `${employee.id}__${isoDate}__${isoDate}__${normalizedType}`;
+          if (existingKeys.has(key)) {
+            skipped += 1;
+            errors.push(
+              `Row ${index + 1}: Duplicate leave entry for ${nameValue} on ${isoDate}.`
+            );
+            return;
+          }
+
+          const record = {
+            id: now + index,
+            employeeId: employee.id,
+            type: normalizedType,
+            from: isoDate,
+            to: isoDate,
+            reason: reasonValue,
+            status: 'approved',
+            approvedBy: req.user?.email || 'CSV Import',
+            approvedAt: new Date().toISOString(),
+            approverRemark: 'Imported via CSV upload',
+            source: 'csv-import',
+            skipBalanceDeduction: true
+          };
+
+          db.data.applications.push(record);
+          existingKeys.add(key);
+          added += 1;
+        });
+
+        if (added) {
+          await db.write();
+        }
+
+        return res
+          .status(added ? 201 : 200)
+          .json({ added, skipped, errors });
+      } catch (err) {
+        console.error('Leave CSV import failed', err);
+        return res.status(400).json({ error: 'Invalid CSV file.' });
+      }
+    }
+  );
+
   // ---- LEAVE REPORT ----
   app.get('/leave-report', authRequired, managerOnly, async (req, res) => {
     await db.read();
