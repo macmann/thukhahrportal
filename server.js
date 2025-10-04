@@ -57,6 +57,69 @@ function getEmpEmail(emp) {
   return emp[key];
 }
 
+function getEmpRole(emp) {
+  if (!emp) return 'employee';
+  const key = Object.keys(emp).find(k => k.toLowerCase() === 'role');
+  const value = key ? String(emp[key] || '').toLowerCase() : '';
+  return value === 'manager' ? 'manager' : 'employee';
+}
+
+function ensureLeaveBalances(emp) {
+  if (!emp) return false;
+  if (!emp.leaveBalances || typeof emp.leaveBalances !== 'object') {
+    emp.leaveBalances = { annual: 0, casual: 0, medical: 0 };
+    return true;
+  }
+  const defaults = { annual: 0, casual: 0, medical: 0 };
+  let updated = false;
+  Object.keys(defaults).forEach(key => {
+    const current = emp.leaveBalances[key];
+    if (typeof current !== 'number' || Number.isNaN(current)) {
+      const num = Number(current);
+      emp.leaveBalances[key] = Number.isFinite(num) ? num : defaults[key];
+      updated = true;
+    }
+  });
+  return updated;
+}
+
+function upsertUserForEmployee(emp) {
+  if (!emp) return false;
+  const email = (getEmpEmail(emp) || '').trim();
+  if (!email) return false;
+  db.data.users = db.data.users || [];
+  const normalizedEmail = email.toLowerCase();
+  const existing = db.data.users.find(
+    u => u.employeeId == emp.id || (u.email && u.email.toLowerCase() === normalizedEmail)
+  );
+  const role = getEmpRole(emp);
+  if (existing) {
+    let changed = false;
+    if (existing.email !== email) {
+      existing.email = email;
+      changed = true;
+    }
+    if (existing.employeeId !== emp.id) {
+      existing.employeeId = emp.id;
+      changed = true;
+    }
+    if (existing.role !== role) {
+      existing.role = role;
+      changed = true;
+    }
+    return changed;
+  }
+
+  db.data.users.push({
+    id: emp.id,
+    email,
+    password: 'brillar',
+    role,
+    employeeId: emp.id
+  });
+  return true;
+}
+
 const SESSION_TOKENS = {}; // token: userId
 
 function genToken() {
@@ -118,7 +181,22 @@ function managerOnly(req, res, next) {
   next();
 }
 
-init().then(() => {
+async function ensureUsersForExistingEmployees() {
+  await db.read();
+  db.data.employees = db.data.employees || [];
+  db.data.users = db.data.users || [];
+  let changed = false;
+  db.data.employees.forEach(emp => {
+    if (ensureLeaveBalances(emp)) changed = true;
+    if (upsertUserForEmployee(emp)) changed = true;
+  });
+  if (changed) {
+    await db.write();
+  }
+}
+
+init().then(async () => {
+  await ensureUsersForExistingEmployees();
   // ========== MICROSOFT SSO ==========
   const oauthStates = new Set();
 
@@ -240,22 +318,14 @@ init().then(() => {
     await db.read();
     const id = Date.now();
     const payload = req.body;
-    db.data.employees.push({ id, ...payload });
-    const emailKey = Object.keys(payload).find(k => k.toLowerCase() === 'email');
-    const roleKey = Object.keys(payload).find(k => k.toLowerCase() === 'role');
-    const email = emailKey ? payload[emailKey] : undefined;
-    if (email) {
-      const role = payload[roleKey]?.toLowerCase() === 'manager' ? 'manager' : 'employee';
-      db.data.users.push({
-        id,
-        email,
-        password: 'brillar',
-        role,
-        employeeId: id
-      });
+    const employee = { id, ...payload };
+    ensureLeaveBalances(employee);
+    db.data.employees.push(employee);
+    if (upsertUserForEmployee(employee)) {
+      // When upsert adds a new user, db.data.users is already updated.
     }
     await db.write();
-    res.status(201).json({ id, ...payload });
+    res.status(201).json(employee);
   });
 
   // ---- BULK CSV UPLOAD ----
@@ -284,18 +354,9 @@ init().then(() => {
           },
           ...row
         };
+        ensureLeaveBalances(emp);
         db.data.employees.push(emp);
-        const email = emailKey ? row[emailKey] : undefined;
-        if (email) {
-          const role = row[roleKey]?.toLowerCase() === 'manager' ? 'manager' : 'employee';
-          db.data.users.push({
-            id,
-            email,
-            password: 'brillar',
-            role,
-            employeeId: id
-          });
-        }
+        upsertUserForEmployee(emp);
       });
       await db.write();
       res.status(201).json({ added: rows.length });
@@ -310,6 +371,8 @@ init().then(() => {
     const emp = db.data.employees.find(e => e.id == req.params.id);
     if (!emp) return res.status(404).json({ error: 'Not found' });
     Object.assign(emp, req.body);
+    ensureLeaveBalances(emp);
+    upsertUserForEmployee(emp);
     await db.write();
     res.json(emp);
   });
@@ -327,7 +390,14 @@ init().then(() => {
     await db.read();
     const idx = db.data.employees.findIndex(e => e.id == req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    db.data.employees.splice(idx, 1);
+    const [removed] = db.data.employees.splice(idx, 1);
+    if (removed) {
+      db.data.users = db.data.users || [];
+      const userIdx = db.data.users.findIndex(u => u.employeeId == removed.id);
+      if (userIdx !== -1) {
+        db.data.users.splice(userIdx, 1);
+      }
+    }
     await db.write();
     res.status(204).end();
   });
