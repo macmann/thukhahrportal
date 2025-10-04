@@ -501,6 +501,29 @@
         </div>
       </div>
 
+      <div id="candidateHireModal" class="modal-backdrop hidden">
+        <div class="modal-card modal-card--wide">
+          <button type="button" id="candidateHireCloseBtn" class="modal-close material-symbols-rounded">close</button>
+          <h3 id="candidateHireTitle" class="modal-title">
+            <span class="material-symbols-rounded">badge</span>
+            <span id="candidateHireTitleText">Complete Employee Record</span>
+          </h3>
+          <p id="candidateHireSubtitle" class="text-muted" style="margin: -8px 0 4px;">
+            Provide the mandatory employee information before marking this candidate as hired.
+          </p>
+          <form id="candidateHireForm" class="form-grid modal-body-scroll">
+            <div id="candidateHireFields"></div>
+          </form>
+          <div class="modal-actions">
+            <button type="button" id="candidateHireCancelBtn" class="md-button md-button--text md-button--small">Cancel</button>
+            <button type="submit" form="candidateHireForm" class="md-button md-button--filled md-button--small">
+              <span class="material-symbols-rounded">save</span>
+              Save &amp; Mark Hired
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div id="commentsModal" class="modal-backdrop hidden">
         <div class="modal-card comments-modal">
           <button type="button" id="commentsModalCloseBtn" class="modal-close material-symbols-rounded">close</button>

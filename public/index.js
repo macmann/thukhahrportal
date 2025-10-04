@@ -14,6 +14,9 @@ let recruitmentActiveCommentCandidateName = '';
 let recruitmentCandidateComments = [];
 let recruitmentEditingCommentId = null;
 let recruitmentActiveDetailsCandidateId = null;
+let currentDrawerFields = [];
+let hireModalState = { candidateId: null, select: null, previousStatus: null, candidate: null };
+let currentHireFields = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
@@ -229,6 +232,22 @@ async function initRecruitment() {
 
   const detailsCommentsBtn = document.getElementById('candidateDetailsCommentsBtn');
   if (detailsCommentsBtn) detailsCommentsBtn.addEventListener('click', onCandidateDetailsCommentsClick);
+
+  const hireCloseBtn = document.getElementById('candidateHireCloseBtn');
+  if (hireCloseBtn) hireCloseBtn.onclick = closeCandidateHireModal;
+
+  const hireCancelBtn = document.getElementById('candidateHireCancelBtn');
+  if (hireCancelBtn) hireCancelBtn.onclick = closeCandidateHireModal;
+
+  const hireForm = document.getElementById('candidateHireForm');
+  if (hireForm) hireForm.addEventListener('submit', onCandidateHireSubmit);
+
+  const hireModal = document.getElementById('candidateHireModal');
+  if (hireModal) {
+    hireModal.addEventListener('click', ev => {
+      if (ev.target === hireModal) closeCandidateHireModal();
+    });
+  }
 
   await loadRecruitmentPositions();
 }
@@ -473,6 +492,13 @@ function renderRecruitmentCandidates() {
     `;
   }).join('');
   body.innerHTML = rows;
+  body.querySelectorAll('.candidate-status').forEach(select => {
+    const candidateId = select.getAttribute('data-candidate-id');
+    const candidate = recruitmentCandidates.find(c => c.id == candidateId);
+    if (candidate) {
+      select.dataset.currentStatus = candidate.status;
+    }
+  });
   refreshCandidateDetailsModal();
 }
 
@@ -482,6 +508,19 @@ async function onCandidateStatusChange(ev) {
   const id = select.getAttribute('data-candidate-id');
   const status = select.value;
   if (!id || !status) return;
+  const candidate = recruitmentCandidates.find(c => c.id == id);
+  const fallbackStatus = candidate?.status || PIPELINE_STATUSES[0];
+  const previousStatus = select.dataset.currentStatus || fallbackStatus;
+  if (status === previousStatus) return;
+  if (status === 'Hired') {
+    if (!candidate) {
+      select.value = previousStatus;
+      return;
+    }
+    select.value = previousStatus;
+    openCandidateHireModal(candidate, select, previousStatus);
+    return;
+  }
   try {
     const res = await apiFetch(`/recruitment/candidates/${id}/status`, {
       method: 'PATCH',
@@ -489,9 +528,11 @@ async function onCandidateStatusChange(ev) {
       body: JSON.stringify({ status })
     });
     if (!res.ok) throw new Error('Failed');
+    select.dataset.currentStatus = status;
     await loadRecruitmentCandidates(recruitmentActivePositionId);
   } catch (err) {
     alert('Failed to update candidate status.');
+    select.value = previousStatus;
     await loadRecruitmentCandidates(recruitmentActivePositionId);
   }
 }
@@ -579,6 +620,200 @@ function refreshCandidateDetailsModal() {
     return;
   }
   populateCandidateDetails(candidate);
+}
+
+function deriveHireInitialValues(candidate, fields = []) {
+  const initial = {};
+  const position = recruitmentPositions.find(pos => pos.id == candidate.positionId);
+  fields.forEach(field => {
+    const keyLower = String(field.key || '').toLowerCase();
+    if (keyLower === 'name' && candidate?.name) {
+      initial[field.key] = candidate.name;
+      return;
+    }
+    if (position && keyLower === 'title' && position.title) {
+      initial[field.key] = position.title;
+      return;
+    }
+    if (position && position.department && keyLower.includes('department')) {
+      initial[field.key] = position.department;
+      return;
+    }
+    if (candidate?.contact) {
+      const contact = candidate.contact;
+      const lowerContact = contact.toLowerCase();
+      if (lowerContact.includes('@') && keyLower.includes('email')) {
+        initial[field.key] = contact;
+        return;
+      }
+      if (!lowerContact.includes('@') && (keyLower.includes('phone') || keyLower.includes('mobile'))) {
+        initial[field.key] = contact;
+        return;
+      }
+      if (keyLower.includes('contact')) {
+        initial[field.key] = contact;
+        return;
+      }
+    }
+    if (field.type === 'select' && Array.isArray(field.options)) {
+      const activeOption = field.options.find(opt => String(opt).toLowerCase() === 'active');
+      if (activeOption && typeof initial[field.key] === 'undefined') {
+        initial[field.key] = activeOption;
+        return;
+      }
+    }
+    if (field.isLeaveBalance && typeof initial[field.key] === 'undefined') {
+      initial[field.key] = 0;
+    }
+  });
+  return initial;
+}
+
+async function openCandidateHireModal(candidate, select, previousStatus) {
+  if (!candidate) return;
+  hireModalState = { candidateId: candidate.id, select, previousStatus, candidate };
+  currentHireFields = [];
+  const modal = document.getElementById('candidateHireModal');
+  const form = document.getElementById('candidateHireForm');
+  const fieldsContainer = document.getElementById('candidateHireFields');
+  const titleTextEl = document.getElementById('candidateHireTitleText');
+  const subtitleEl = document.getElementById('candidateHireSubtitle');
+  if (form) form.reset();
+  if (titleTextEl) {
+    titleTextEl.textContent = candidate.name ? `Complete record for ${candidate.name}` : 'Complete Employee Record';
+  }
+  if (subtitleEl) {
+    subtitleEl.textContent = candidate.name
+      ? `Provide the mandatory employee information to onboard ${candidate.name}.`
+      : 'Provide the mandatory employee information before marking this candidate as hired.';
+  }
+  if (fieldsContainer) {
+    fieldsContainer.innerHTML = '<p class="text-muted" style="font-style: italic;">Loading employee fields...</p>';
+  }
+  if (modal) {
+    modal.classList.remove('hidden');
+  }
+  try {
+    const fields = await getDynamicEmployeeFields();
+    if (!hireModalState.candidateId || hireModalState.candidateId !== candidate.id) return;
+    currentHireFields = Array.isArray(fields) ? fields : [];
+    const initialValues = deriveHireInitialValues(candidate, currentHireFields);
+    if (fieldsContainer) {
+      if (currentHireFields.length) {
+        fieldsContainer.innerHTML = buildDynamicFieldsHtml(currentHireFields, initialValues, 'hire');
+      } else {
+        fieldsContainer.innerHTML = '<p class="text-muted" style="font-style: italic;">No employee fields configured yet. Please add an employee template in Employee Management.</p>';
+      }
+    }
+    setTimeout(() => {
+      const focusTarget = document.querySelector('#candidateHireFields input, #candidateHireFields select, #candidateHireFields textarea');
+      if (focusTarget) focusTarget.focus();
+    }, 50);
+  } catch (err) {
+    if (fieldsContainer) {
+      fieldsContainer.innerHTML = '<p style="color:#dc2626;">Unable to load employee fields. Please try again.</p>';
+    }
+  }
+}
+
+function closeCandidateHireModal() {
+  const modal = document.getElementById('candidateHireModal');
+  if (modal) modal.classList.add('hidden');
+  const form = document.getElementById('candidateHireForm');
+  if (form) form.reset();
+  const fieldsContainer = document.getElementById('candidateHireFields');
+  if (fieldsContainer) fieldsContainer.innerHTML = '';
+  currentHireFields = [];
+  hireModalState = { candidateId: null, select: null, previousStatus: null, candidate: null };
+}
+
+async function onCandidateHireSubmit(ev) {
+  ev.preventDefault();
+  if (!hireModalState.candidateId) {
+    alert('Select a candidate to hire.');
+    return;
+  }
+  const form = ev.target;
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const cancelBtn = document.getElementById('candidateHireCancelBtn');
+  [submitBtn, cancelBtn].forEach(btn => { if (btn) btn.disabled = true; });
+  let employeeCreated = false;
+  try {
+    const payload = buildEmployeePayload(form, currentHireFields);
+    const ensureValue = (keyName, value, overwriteEmpty = false) => {
+      if (!value) return;
+      const matchKey = Object.keys(payload).find(k => k.toLowerCase() === keyName.toLowerCase());
+      if (matchKey) {
+        if (overwriteEmpty) {
+          const current = payload[matchKey];
+          if (current === '' || current === null || typeof current === 'undefined') {
+            payload[matchKey] = value;
+          }
+        }
+      } else {
+        payload[keyName] = value;
+      }
+    };
+    ensureValue('name', hireModalState.candidate?.name, true);
+    ensureValue('status', 'active', true);
+    if (hireModalState.candidate?.contact) {
+      const contact = hireModalState.candidate.contact;
+      if (contact.includes('@')) {
+        ensureValue('email', contact, true);
+      }
+    }
+    const res = await apiFetch('/employees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create employee record.');
+    }
+    employeeCreated = true;
+    const candidateId = hireModalState.candidateId;
+    const statusRes = await apiFetch(`/recruitment/candidates/${candidateId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'Hired' })
+    });
+    if (!statusRes.ok) {
+      const err = await statusRes.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update candidate status.');
+    }
+    if (hireModalState.select) {
+      hireModalState.select.value = 'Hired';
+      hireModalState.select.dataset.currentStatus = 'Hired';
+    }
+    closeCandidateHireModal();
+    alert('Candidate added to Employee Management and marked as hired.');
+    await Promise.all([
+      loadRecruitmentCandidates(recruitmentActivePositionId),
+      loadEmployeesManage(),
+      loadEmployeesPortal()
+    ]);
+  } catch (err) {
+    if (employeeCreated) {
+      const message = err.message ? `${err.message} Please update the candidate status manually.` : 'Employee record created but the candidate status was not updated. Please update it manually.';
+      alert(message);
+      if (hireModalState.select) {
+        const revert = hireModalState.previousStatus || hireModalState.select.dataset.currentStatus || PIPELINE_STATUSES[0];
+        hireModalState.select.value = revert;
+        hireModalState.select.dataset.currentStatus = revert;
+      }
+      closeCandidateHireModal();
+      await Promise.all([
+        loadEmployeesManage(),
+        loadEmployeesPortal(),
+        loadRecruitmentCandidates(recruitmentActivePositionId)
+      ]);
+    } else {
+      alert(err.message || 'Failed to complete hiring. Please try again.');
+    }
+  } finally {
+    [submitBtn, cancelBtn].forEach(btn => { if (btn) btn.disabled = false; });
+  }
 }
 
 async function onCandidateDetailsDownloadClick(ev) {
@@ -1523,29 +1758,84 @@ async function loadLeaveRange(start, end) {
 }
 
 // ---- Drawer logic ----
-function openEmpDrawer({title, fields, initial={}}) {
-  drawerEditId = initial.id || null;
-  document.getElementById('drawerTitle').textContent = title;
-  const fieldHtml = fields.map(f => {
-    const val = initial[f.key] ?? '';
-    const fieldId = `drawer-${f.key}`.replace(/\s+/g, '-');
-    if (f.type === 'select') {
-      return `<div class="md-field">
-        <label class="md-label" for="${fieldId}">${f.label}</label>
-        <div class="md-input-wrapper">
-          <select name="${f.key}" id="${fieldId}" class="md-select">
-            ${f.options.map(opt => `<option value="${opt}" ${val === opt ? 'selected':''}>${opt}</option>`).join('')}
-          </select>
+function makeDynamicFieldId(prefix, key) {
+  const safeKey = String(key ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-');
+  const suffix = safeKey.replace(/^-+|-+$/g, '') || Math.random().toString(36).slice(2, 8);
+  return `${prefix}-${suffix}`;
+}
+
+function buildDynamicFieldsHtml(fields = [], initial = {}, prefix = 'field') {
+  return fields.map(field => {
+    const fieldId = makeDynamicFieldId(prefix, field.key);
+    const rawValue = initial[field.key];
+    const value = rawValue === null || typeof rawValue === 'undefined' ? '' : rawValue;
+    const requiredAttr = field.required ? 'required' : '';
+    if (field.type === 'select') {
+      const options = Array.isArray(field.options) ? field.options : [];
+      const optionsMarkup = options.map(opt => {
+        const optionValue = opt === null || typeof opt === 'undefined' ? '' : String(opt);
+        const selected = String(value) === optionValue ? 'selected' : '';
+        return `<option value="${escapeHtml(optionValue)}" ${selected}>${escapeHtml(optionValue)}</option>`;
+      }).join('');
+      return `
+        <div class="md-field">
+          <label class="md-label" for="${fieldId}">${escapeHtml(field.label || field.key)}</label>
+          <div class="md-input-wrapper">
+            <select name="${field.key}" id="${fieldId}" class="md-select" ${requiredAttr}>
+              ${optionsMarkup}
+            </select>
+          </div>
         </div>
-      </div>`;
+      `;
     }
-    return `<div class="md-field">
-      <label class="md-label" for="${fieldId}">${f.label}</label>
-      <div class="md-input-wrapper">
-        <input name="${f.key}" id="${fieldId}" class="md-input" value="${val}" ${f.type ? `type="${f.type}"` : ''} ${f.required ? 'required' : ''}>
+    const inputType = field.type && field.type !== 'select' ? field.type : 'text';
+    return `
+      <div class="md-field">
+        <label class="md-label" for="${fieldId}">${escapeHtml(field.label || field.key)}</label>
+        <div class="md-input-wrapper">
+          <input name="${field.key}" id="${fieldId}" class="md-input" type="${escapeHtml(inputType)}" value="${escapeHtml(String(value))}" ${requiredAttr}>
+        </div>
       </div>
-    </div>`;
+    `;
   }).join('');
+}
+
+function buildEmployeePayload(formEl, fields = []) {
+  const formData = new FormData(formEl);
+  const data = {};
+  formData.forEach((value, key) => {
+    if (typeof value === 'string') {
+      data[key] = value.trim();
+    } else {
+      data[key] = value;
+    }
+  });
+  const payload = { ...data };
+  let leaveKeys = Array.isArray(fields)
+    ? fields.filter(field => field && field.isLeaveBalance).map(field => field.key)
+    : [];
+  if (!leaveKeys.length) {
+    leaveKeys = ['annual', 'casual', 'medical'].filter(key => Object.prototype.hasOwnProperty.call(payload, key));
+  }
+  if (leaveKeys.length) {
+    payload.leaveBalances = {};
+    leaveKeys.forEach(key => {
+      const raw = data[key];
+      const num = Number(raw === '' || typeof raw === 'undefined' ? 0 : raw);
+      payload.leaveBalances[key] = Number.isNaN(num) ? 0 : num;
+      delete payload[key];
+    });
+  }
+  return payload;
+}
+
+function openEmpDrawer({title, fields = [], initial = {}}) {
+  drawerEditId = initial.id || null;
+  currentDrawerFields = Array.isArray(fields) ? fields : [];
+  document.getElementById('drawerTitle').textContent = title;
+  const fieldHtml = buildDynamicFieldsHtml(currentDrawerFields, initial, 'drawer');
   document.getElementById('drawerFields').innerHTML = fieldHtml;
   document.getElementById('empDrawer').classList.remove('hidden');
   setTimeout(()=>document.getElementById('empDrawer').classList.add('show'),10);
@@ -1559,11 +1849,8 @@ function closeEmpDrawer() {
 // Drawer submit
 async function onEmpDrawerSubmit(ev) {
   ev.preventDefault();
-  const data = {};
-  new FormData(ev.target).forEach((v,k)=>{data[k]=v;});
-  ['annual','casual','medical'].forEach(f=>{if(data[f])data[f]=+data[f]});
-  const payload = {...data, leaveBalances: {annual: data.annual, casual: data.casual, medical: data.medical}};
-  delete payload.annual; delete payload.casual; delete payload.medical;
+  const form = ev.target;
+  const payload = buildEmployeePayload(form, currentDrawerFields);
   let url, method;
   if (drawerEditId) {
     url = `/employees/${drawerEditId}`; method = 'PUT';
@@ -1582,7 +1869,7 @@ async function getDynamicEmployeeFields() {
   let leaveFields = [];
   if (sample.leaveBalances) {
     Object.entries(sample.leaveBalances).forEach(([k,v])=>{
-      leaveFields.push({key:k,label:k.charAt(0).toUpperCase()+k.slice(1)+' Leave',type:'number',required:false});
+      leaveFields.push({key:k,label:k.charAt(0).toUpperCase()+k.slice(1)+' Leave',type:'number',required:false,isLeaveBalance:true});
     });
   }
   const requiredFields = ['name', 'title', 'country/city'];

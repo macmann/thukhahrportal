@@ -575,6 +575,21 @@ body {
   gap: 18px;
 }
 
+.modal-card--wide {
+  width: min(720px, 100%);
+  max-height: 85vh;
+}
+
+.modal-body-scroll {
+  overflow-y: auto;
+  max-height: 60vh;
+  padding-right: 4px;
+}
+
+#candidateHireFields {
+  display: contents;
+}
+
 .modal-close {
   position: absolute;
   top: 16px;
