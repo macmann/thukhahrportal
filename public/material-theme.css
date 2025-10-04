@@ -626,6 +626,49 @@ body {
   color: rgba(15, 23, 42, 0.88);
 }
 
+.candidate-details-modal {
+  width: min(520px, 100%);
+}
+
+.candidate-details-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.candidate-details-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(71, 85, 105, 0.85);
+}
+
+.candidate-details-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: rgba(15, 23, 42, 0.88);
+  word-break: break-word;
+}
+
+.candidate-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.candidate-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.candidate-name {
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.92);
+}
+
 .comments-list {
   flex: 1;
   min-height: 120px;

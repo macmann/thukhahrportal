@@ -13,6 +13,7 @@ let recruitmentActiveCommentCandidateId = null;
 let recruitmentActiveCommentCandidateName = '';
 let recruitmentCandidateComments = [];
 let recruitmentEditingCommentId = null;
+let recruitmentActiveDetailsCandidateId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
@@ -212,6 +213,22 @@ async function initRecruitment() {
 
   const commentFormEl = document.getElementById('commentForm');
   if (commentFormEl) commentFormEl.addEventListener('submit', onCommentSubmit);
+
+  const detailsCloseBtn = document.getElementById('candidateDetailsCloseBtn');
+  if (detailsCloseBtn) detailsCloseBtn.onclick = closeCandidateDetailsModal;
+
+  const detailsModal = document.getElementById('candidateDetailsModal');
+  if (detailsModal) {
+    detailsModal.addEventListener('click', ev => {
+      if (ev.target === detailsModal) closeCandidateDetailsModal();
+    });
+  }
+
+  const detailsDownloadBtn = document.getElementById('candidateDetailsDownloadBtn');
+  if (detailsDownloadBtn) detailsDownloadBtn.addEventListener('click', onCandidateDetailsDownloadClick);
+
+  const detailsCommentsBtn = document.getElementById('candidateDetailsCommentsBtn');
+  if (detailsCommentsBtn) detailsCommentsBtn.addEventListener('click', onCandidateDetailsCommentsClick);
 
   await loadRecruitmentPositions();
 }
@@ -423,47 +440,40 @@ function renderRecruitmentCandidates() {
   const body = document.getElementById('candidateTableBody');
   if (!body) return;
   if (!recruitmentActivePositionId) {
-    body.innerHTML = '<tr><td colspan="6" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td></tr>';
+    body.innerHTML = '<tr><td colspan="3" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td></tr>';
+    closeCandidateDetailsModal();
     return;
   }
   if (!recruitmentCandidates.length) {
-    body.innerHTML = '<tr><td colspan="6" class="text-muted" style="padding:16px; font-style: italic;">No candidates yet for this position.</td></tr>';
+    body.innerHTML = '<tr><td colspan="3" class="text-muted" style="padding:16px; font-style: italic;">No candidates yet for this position.</td></tr>';
+    closeCandidateDetailsModal();
     return;
   }
   const rows = recruitmentCandidates.map(candidate => {
     const statusOptions = PIPELINE_STATUSES.map(status => `<option value="${status}" ${status === candidate.status ? 'selected' : ''}>${status}</option>`).join('');
     const contact = candidate.contact ? escapeHtml(candidate.contact) : '<span class="text-muted">Not provided</span>';
-    const created = formatRecruitmentDateTime(candidate.createdAt);
-    const fileLabel = candidate.cv?.filename ? escapeHtml(candidate.cv.filename) : 'Download CV';
-    const commentCount = Number.isFinite(candidate.commentCount) ? candidate.commentCount : 0;
-    const commentLabel = commentCount === 1 ? '1 Comment' : `${commentCount} Comments`;
     return `
       <tr>
-        <td>${escapeHtml(candidate.name)}</td>
+        <td>
+          <div class="candidate-name-cell">
+            <div class="candidate-name">${escapeHtml(candidate.name)}</div>
+            <button type="button" class="md-button md-button--text candidate-details" data-candidate-id="${candidate.id}">
+              <span class="material-symbols-rounded">info</span>
+              View details
+            </button>
+          </div>
+        </td>
         <td>${contact}</td>
         <td>
           <select class="md-select candidate-status" data-candidate-id="${candidate.id}">
             ${statusOptions}
           </select>
         </td>
-        <td>
-          <button type="button" class="md-button md-button--outlined md-button--small candidate-comments" data-candidate-id="${candidate.id}" data-candidate-name="${escapeHtml(candidate.name)}">
-            <span class="material-symbols-rounded">comment</span>
-            ${commentLabel}
-          </button>
-        </td>
-        <td>
-          <button type="button" class="md-button md-button--tonal md-button--small candidate-download" data-candidate-id="${candidate.id}">
-            <span class="material-symbols-rounded">download</span>
-            Download
-          </button>
-          <div class="text-muted" style="font-size: 12px;">${fileLabel}</div>
-        </td>
-        <td>${created || '-'}</td>
       </tr>
     `;
   }).join('');
   body.innerHTML = rows;
+  refreshCandidateDetailsModal();
 }
 
 async function onCandidateStatusChange(ev) {
@@ -487,28 +497,11 @@ async function onCandidateStatusChange(ev) {
 }
 
 async function onCandidateTableClick(ev) {
-  const downloadButton = ev.target.closest('.candidate-download');
-  if (downloadButton) {
-    const id = downloadButton.getAttribute('data-candidate-id');
-    if (!id) return;
-    downloadButton.disabled = true;
-    try {
-      await downloadCandidateCv(id);
-    } catch (err) {
-      alert('Unable to download CV at the moment.');
-    } finally {
-      downloadButton.disabled = false;
-    }
-    return;
-  }
-
-  const commentButton = ev.target.closest('.candidate-comments');
-  if (commentButton) {
-    const id = commentButton.getAttribute('data-candidate-id');
-    const name = commentButton.getAttribute('data-candidate-name') || '';
-    if (!id) return;
-    openCandidateCommentsModal(Number(id), name);
-  }
+  const detailsButton = ev.target.closest('.candidate-details');
+  if (!detailsButton) return;
+  const id = Number(detailsButton.getAttribute('data-candidate-id'));
+  if (!id) return;
+  openCandidateDetailsModal(id);
 }
 
 async function downloadCandidateCv(id) {
@@ -525,6 +518,93 @@ async function downloadCandidateCv(id) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function openCandidateDetailsModal(candidateId) {
+  const candidate = recruitmentCandidates.find(c => c.id == candidateId);
+  if (!candidate) return;
+  recruitmentActiveDetailsCandidateId = candidateId;
+  populateCandidateDetails(candidate);
+  const modal = document.getElementById('candidateDetailsModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeCandidateDetailsModal() {
+  const modal = document.getElementById('candidateDetailsModal');
+  if (modal) modal.classList.add('hidden');
+  recruitmentActiveDetailsCandidateId = null;
+}
+
+function populateCandidateDetails(candidate) {
+  const nameEl = document.getElementById('candidateDetailsName');
+  if (nameEl) nameEl.textContent = candidate?.name ? candidate.name : '-';
+
+  const contactEl = document.getElementById('candidateDetailsContact');
+  if (contactEl) contactEl.textContent = candidate?.contact ? candidate.contact : 'Not provided';
+
+  const statusEl = document.getElementById('candidateDetailsStatus');
+  if (statusEl) statusEl.textContent = candidate?.status || '-';
+
+  const createdEl = document.getElementById('candidateDetailsCreated');
+  if (createdEl) createdEl.textContent = formatRecruitmentDateTime(candidate?.createdAt) || '-';
+
+  const commentsEl = document.getElementById('candidateDetailsComments');
+  if (commentsEl) {
+    const count = Number.isFinite(candidate?.commentCount) ? candidate.commentCount : 0;
+    commentsEl.textContent = count === 1 ? '1 comment' : `${count} comments`;
+  }
+
+  const cvEl = document.getElementById('candidateDetailsCv');
+  const hasCv = !!candidate?.cv?.filename;
+  if (cvEl) cvEl.textContent = hasCv ? candidate.cv.filename : 'No CV uploaded';
+
+  const downloadBtn = document.getElementById('candidateDetailsDownloadBtn');
+  if (downloadBtn) {
+    downloadBtn.dataset.candidateId = candidate?.id;
+    downloadBtn.disabled = !hasCv;
+  }
+
+  const commentsBtn = document.getElementById('candidateDetailsCommentsBtn');
+  if (commentsBtn) {
+    commentsBtn.dataset.candidateId = candidate?.id;
+    commentsBtn.dataset.candidateName = candidate?.name || '';
+  }
+}
+
+function refreshCandidateDetailsModal() {
+  if (!recruitmentActiveDetailsCandidateId) return;
+  const candidate = recruitmentCandidates.find(c => c.id == recruitmentActiveDetailsCandidateId);
+  if (!candidate) {
+    closeCandidateDetailsModal();
+    return;
+  }
+  populateCandidateDetails(candidate);
+}
+
+async function onCandidateDetailsDownloadClick(ev) {
+  const button = ev.currentTarget;
+  if (!button?.dataset?.candidateId || button.disabled) return;
+  const id = Number(button.dataset.candidateId);
+  if (!id) return;
+  button.disabled = true;
+  try {
+    await downloadCandidateCv(id);
+  } catch (err) {
+    alert('Unable to download CV at the moment.');
+  } finally {
+    const candidate = recruitmentCandidates.find(c => c.id == id);
+    const hasCv = !!candidate?.cv?.filename;
+    button.disabled = !hasCv;
+  }
+}
+
+function onCandidateDetailsCommentsClick(ev) {
+  const button = ev.currentTarget;
+  if (!button?.dataset?.candidateId) return;
+  const id = Number(button.dataset.candidateId);
+  if (!id) return;
+  const name = button.dataset.candidateName || '';
+  openCandidateCommentsModal(id, name);
 }
 
 async function openCandidateCommentsModal(candidateId, candidateName) {

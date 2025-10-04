@@ -445,20 +445,61 @@
                   <th>Candidate</th>
                   <th>Contact</th>
                   <th>Status</th>
-                  <th>Comments</th>
-                  <th>CV</th>
-                  <th>Created</th>
                 </tr>
               </thead>
               <tbody id="candidateTableBody">
                 <tr>
-                  <td colspan="6" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td>
+                  <td colspan="3" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
       </section>
+
+      <div id="candidateDetailsModal" class="modal-backdrop hidden">
+        <div class="modal-card candidate-details-modal">
+          <button type="button" id="candidateDetailsCloseBtn" class="modal-close material-symbols-rounded">close</button>
+          <h3 class="modal-title">
+            <span class="material-symbols-rounded">person</span>
+            Candidate Details
+          </h3>
+          <div class="candidate-details-section">
+            <div class="candidate-details-label">Candidate</div>
+            <div id="candidateDetailsName" class="candidate-details-value">-</div>
+          </div>
+          <div class="candidate-details-section">
+            <div class="candidate-details-label">Contact</div>
+            <div id="candidateDetailsContact" class="candidate-details-value">-</div>
+          </div>
+          <div class="candidate-details-section">
+            <div class="candidate-details-label">Status</div>
+            <div id="candidateDetailsStatus" class="candidate-details-value">-</div>
+          </div>
+          <div class="candidate-details-section">
+            <div class="candidate-details-label">Created</div>
+            <div id="candidateDetailsCreated" class="candidate-details-value">-</div>
+          </div>
+          <div class="candidate-details-section">
+            <div class="candidate-details-label">Comments</div>
+            <div id="candidateDetailsComments" class="candidate-details-value">-</div>
+          </div>
+          <div class="candidate-details-section">
+            <div class="candidate-details-label">CV</div>
+            <div id="candidateDetailsCv" class="candidate-details-value">-</div>
+          </div>
+          <div class="candidate-details-actions">
+            <button type="button" id="candidateDetailsDownloadBtn" class="md-button md-button--tonal">
+              <span class="material-symbols-rounded">download</span>
+              Download CV
+            </button>
+            <button type="button" id="candidateDetailsCommentsBtn" class="md-button md-button--outlined">
+              <span class="material-symbols-rounded">forum</span>
+              View Comments
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div id="commentsModal" class="modal-backdrop hidden">
         <div class="modal-card comments-modal">
