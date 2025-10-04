@@ -185,6 +185,9 @@ async function ensureUsersForExistingEmployees() {
   await db.read();
   db.data.employees = db.data.employees || [];
   db.data.users = db.data.users || [];
+  if (!Array.isArray(db.data.holidays)) {
+    db.data.holidays = [];
+  }
   let changed = false;
   db.data.employees.forEach(emp => {
     if (ensureLeaveBalances(emp)) changed = true;
@@ -849,6 +852,58 @@ init().then(async () => {
     }
   );
 
+  // ---- HOLIDAY CONFIGURATION ----
+  app.get('/holidays', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const holidays = Array.isArray(db.data.holidays) ? db.data.holidays : [];
+    const sorted = [...holidays].sort((a, b) => a.date.localeCompare(b.date));
+    res.json(sorted);
+  });
+
+  app.post('/holidays', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const dateValue = typeof req.body?.date === 'string' ? req.body.date.trim() : '';
+    const nameValue = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (!dateValue) {
+      return res.status(400).json({ error: 'Holiday date is required.' });
+    }
+    if (!nameValue) {
+      return res.status(400).json({ error: 'Holiday name is required.' });
+    }
+
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) {
+      return res.status(400).json({ error: 'Invalid holiday date.' });
+    }
+    const isoDate = parsed.toISOString().split('T')[0];
+
+    db.data.holidays = Array.isArray(db.data.holidays) ? db.data.holidays : [];
+    if (db.data.holidays.some(h => h.date === isoDate)) {
+      return res.status(400).json({ error: 'A holiday already exists on this date.' });
+    }
+
+    const holiday = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      date: isoDate,
+      name: nameValue
+    };
+    db.data.holidays.push(holiday);
+    await db.write();
+    res.status(201).json(holiday);
+  });
+
+  app.delete('/holidays/:id', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.holidays = Array.isArray(db.data.holidays) ? db.data.holidays : [];
+    const index = db.data.holidays.findIndex(h => h.id === req.params.id);
+    if (index < 0) {
+      return res.status(404).json({ error: 'Holiday not found.' });
+    }
+    db.data.holidays.splice(index, 1);
+    await db.write();
+    res.json({ success: true });
+  });
+
   // ---- LEAVE REPORT ----
   app.get('/leave-report', authRequired, managerOnly, async (req, res) => {
     await db.read();
@@ -959,17 +1014,27 @@ init().then(async () => {
 
   // ========== LEAVE LOGIC ==========
 
+  // Helper: Holiday lookup
+  function getHolidaySet() {
+    const holidays = Array.isArray(db.data?.holidays) ? db.data.holidays : [];
+    return new Set(holidays.map(h => h.date));
+  }
+
   // Helper: Get leave days (with half day support)
   function getLeaveDays(app) {
     const from = new Date(app.from);
     const to = new Date(app.to);
+    const holidaySet = getHolidaySet();
     if (app.halfDay) {
-      return (from.getDay() === 0 || from.getDay() === 6) ? 0 : 0.5;
+      const day = from.getDay();
+      const iso = from.toISOString().split('T')[0];
+      return day === 0 || day === 6 || holidaySet.has(iso) ? 0 : 0.5;
     }
     let days = 0;
     for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
       const day = d.getDay();
-      if (day !== 0 && day !== 6) days++;
+      const iso = d.toISOString().split('T')[0];
+      if (day !== 0 && day !== 6 && !holidaySet.has(iso)) days++;
     }
     return days;
   }
@@ -978,18 +1043,22 @@ init().then(async () => {
     if (!startDate && !endDate) return getLeaveDays(app);
     const from = new Date(app.from);
     const to = new Date(app.to);
+    const holidaySet = getHolidaySet();
     const start = startDate && from < startDate ? new Date(startDate) : from;
     const end = endDate && to > endDate ? new Date(endDate) : to;
     if (app.halfDay) {
       if (startDate && from < startDate) return 0;
       if (endDate && from > endDate) return 0;
-      return (from.getDay() === 0 || from.getDay() === 6) ? 0 : 0.5;
+      const day = from.getDay();
+      const iso = from.toISOString().split('T')[0];
+      return day === 0 || day === 6 || holidaySet.has(iso) ? 0 : 0.5;
     }
     if (end < start) return 0;
     let days = 0;
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const day = d.getDay();
-      if (day !== 0 && day !== 6) days++;
+      const iso = d.toISOString().split('T')[0];
+      if (day !== 0 && day !== 6 && !holidaySet.has(iso)) days++;
     }
     return days;
   }

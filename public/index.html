@@ -89,6 +89,10 @@
         <span class="material-symbols-rounded">insights</span>
         <span>Leave Report</span>
       </button>
+      <button id="tabSettings" class="tab-button hidden">
+        <span class="material-symbols-rounded">settings</span>
+        <span>Settings</span>
+      </button>
     </nav>
 
     <main class="content-area">
@@ -657,6 +661,46 @@
         </div>
 
         <div id="leaveRangeCards"></div>
+      </section>
+
+      <!-- Settings Panel -->
+      <section id="settingsPanel" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="material-symbols-rounded">settings</span>
+            Settings
+          </h2>
+          <p class="panel-subtitle">Configure company holidays to ensure accurate leave balances.</p>
+        </div>
+
+        <div class="md-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">calendar_month</span>
+            Holiday Calendar
+          </div>
+          <p class="card-subtitle">Add official days off so applied leaves on these dates won't deduct balances.</p>
+          <form id="holidayForm" class="settings-form">
+            <div class="settings-form__fields">
+              <label class="md-label" for="holidayDate">Holiday date</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">event</span>
+                <input type="date" id="holidayDate" class="md-input" required>
+              </div>
+            </div>
+            <div class="settings-form__fields">
+              <label class="md-label" for="holidayName">Holiday name</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">celebration</span>
+                <input type="text" id="holidayName" class="md-input" placeholder="e.g., Founders' Day" required>
+              </div>
+            </div>
+            <button type="submit" class="md-button md-button--filled md-button--small settings-form__submit">
+              <span class="material-symbols-rounded">add</span>
+              Add Holiday
+            </button>
+          </form>
+          <div id="holidayList" class="holiday-list"></div>
+        </div>
       </section>
     </main>
   </div>

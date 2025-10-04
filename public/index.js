@@ -3,6 +3,7 @@
 let currentUser = null;
 let calendarCurrent = new Date();
 let empSearchTerm = '';
+let companyHolidays = [];
 
 const PIPELINE_STATUSES = ['New', 'Selected for Interview', 'Interview Completed', 'Rejected', 'Hired'];
 let recruitmentPositions = [];
@@ -121,19 +122,22 @@ function showPanel(name) {
   const recruitmentBtn = document.getElementById('tabRecruitment');
   const managerBtn  = document.getElementById('tabManagerApps');
   const reportBtn   = document.getElementById('tabLeaveReport');
+  const settingsBtn = document.getElementById('tabSettings');
   const portalPanel = document.getElementById('portalPanel');
   const managePanel = document.getElementById('managePanel');
   const recruitmentPanel = document.getElementById('recruitmentPanel');
   const managerPanel = document.getElementById('managerAppsPanel');
   const reportPanel  = document.getElementById('leaveReportPanel');
+  const settingsPanel = document.getElementById('settingsPanel');
 
-  [portalBtn, manageBtn, recruitmentBtn, managerBtn, reportBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
+  [portalBtn, manageBtn, recruitmentBtn, managerBtn, reportBtn, settingsBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
 
   portalPanel.classList.add('hidden');
   managePanel.classList.add('hidden');
   recruitmentPanel.classList.add('hidden');
   managerPanel.classList.add('hidden');
   reportPanel.classList.add('hidden');
+  settingsPanel.classList.add('hidden');
 
   if (name === 'portal') {
     portalPanel.classList.remove('hidden');
@@ -168,6 +172,13 @@ function showPanel(name) {
     const cards = document.getElementById('leaveRangeCards');
     if (cards) cards.innerHTML = '';
   }
+  if (name === 'settings') {
+    settingsPanel.classList.remove('hidden');
+    if (settingsBtn) settingsBtn.classList.add('active-tab');
+    if (currentUser?.role === 'manager') {
+      loadHolidays();
+    }
+  }
 }
 
 // Role-based tab display
@@ -177,11 +188,136 @@ function toggleTabsByRole() {
     document.getElementById('tabRecruitment').classList.remove('hidden');
     document.getElementById('tabManagerApps').classList.remove('hidden');
     document.getElementById('tabLeaveReport').classList.remove('hidden');
+    document.getElementById('tabSettings').classList.remove('hidden');
   } else {
     document.getElementById('tabManage').classList.add('hidden');
     document.getElementById('tabRecruitment').classList.add('hidden');
     document.getElementById('tabManagerApps').classList.add('hidden');
     document.getElementById('tabLeaveReport').classList.add('hidden');
+    document.getElementById('tabSettings').classList.add('hidden');
+  }
+}
+
+function formatHolidayDate(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+async function loadHolidays() {
+  if (!currentUser || currentUser.role !== 'manager') return;
+  const list = document.getElementById('holidayList');
+  if (list && !list.dataset.persist) {
+    list.innerHTML = '<p class="text-muted" style="font-style: italic;">Loading holidays...</p>';
+  }
+  try {
+    const res = await apiFetch('/holidays');
+    if (!res.ok) throw new Error('Failed to load holidays');
+    const data = await res.json();
+    companyHolidays = Array.isArray(data) ? data : [];
+    companyHolidays.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    renderHolidayList();
+  } catch (err) {
+    console.error('Failed to load holidays', err);
+    if (list) {
+      list.innerHTML = '<p class="text-muted" style="font-style: italic; color:#b3261e;">Unable to load holidays.</p>';
+      list.dataset.persist = 'true';
+    }
+  }
+}
+
+function renderHolidayList() {
+  const list = document.getElementById('holidayList');
+  if (!list) return;
+  list.dataset.persist = 'true';
+  if (!Array.isArray(companyHolidays) || companyHolidays.length === 0) {
+    list.innerHTML = '<p class="text-muted" style="font-style: italic;">No holidays added yet.</p>';
+    return;
+  }
+  const items = companyHolidays.map(holiday => {
+    const id = holiday?.id ? escapeHtml(String(holiday.id)) : '';
+    const name = holiday?.name ? escapeHtml(String(holiday.name)) : '';
+    const iso = holiday?.date ? escapeHtml(String(holiday.date)) : '';
+    const formatted = escapeHtml(formatHolidayDate(holiday?.date));
+    return `
+      <div class="holiday-item">
+        <div class="holiday-item__meta">
+          <div class="holiday-item__date">${formatted}</div>
+          <div class="holiday-item__name">${name}</div>
+          <div class="holiday-item__iso text-quiet">${iso}</div>
+        </div>
+        <button type="button" class="md-button md-button--text md-button--small holiday-item__delete" data-action="delete-holiday" data-id="${id}">
+          <span class="material-symbols-rounded">delete</span>
+          Remove
+        </button>
+      </div>
+    `;
+  });
+  list.innerHTML = items.join('');
+}
+
+async function onHolidaySubmit(ev) {
+  ev.preventDefault();
+  if (!currentUser || currentUser.role !== 'manager') return;
+  const dateInput = document.getElementById('holidayDate');
+  const nameInput = document.getElementById('holidayName');
+  const dateValue = dateInput?.value;
+  const nameValue = nameInput?.value?.trim();
+  if (!dateValue) {
+    alert('Please choose a holiday date.');
+    return;
+  }
+  if (!nameValue) {
+    alert('Please enter a holiday name.');
+    return;
+  }
+  try {
+    const res = await apiFetch('/holidays', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: dateValue, name: nameValue })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to add holiday.');
+    }
+    if (Array.isArray(companyHolidays)) {
+      companyHolidays = [...companyHolidays, data];
+      companyHolidays.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    } else {
+      companyHolidays = [data];
+    }
+    renderHolidayList();
+    if (dateInput) dateInput.value = '';
+    if (nameInput) nameInput.value = '';
+  } catch (err) {
+    console.error('Failed to add holiday', err);
+    alert(err.message || 'Failed to add holiday.');
+  }
+}
+
+async function onHolidayListClick(ev) {
+  const button = ev.target.closest('[data-action="delete-holiday"]');
+  if (!button) return;
+  const id = button.getAttribute('data-id');
+  if (!id) return;
+  if (!confirm('Remove this holiday?')) return;
+  try {
+    const res = await apiFetch('/holidays/' + encodeURIComponent(id), { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to delete holiday.');
+    }
+    companyHolidays = Array.isArray(companyHolidays) ? companyHolidays.filter(h => h.id !== id) : [];
+    renderHolidayList();
+  } catch (err) {
+    console.error('Failed to delete holiday', err);
+    alert(err.message || 'Failed to delete holiday.');
   }
 }
 
@@ -1054,6 +1190,8 @@ async function init() {
   if (managerTab) managerTab.onclick = () => showPanel('managerApps');
   const reportTab = document.getElementById('tabLeaveReport');
   if (reportTab) reportTab.onclick = () => showPanel('leaveReport');
+  const settingsTab = document.getElementById('tabSettings');
+  if (settingsTab) settingsTab.onclick = () => showPanel('settings');
   showPanel('portal');
 
   document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
@@ -1149,6 +1287,14 @@ async function init() {
         alert('Failed to export leave report');
       }
     };
+  }
+  const holidayForm = document.getElementById('holidayForm');
+  if (holidayForm) {
+    holidayForm.addEventListener('submit', onHolidaySubmit);
+  }
+  const holidayList = document.getElementById('holidayList');
+  if (holidayList) {
+    holidayList.addEventListener('click', onHolidayListClick);
   }
   const reportApply = document.getElementById('reportApply');
   const reportWeek = document.getElementById('reportWeek');
