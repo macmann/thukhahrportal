@@ -9,8 +9,8 @@ const { parse } = require('csv-parse/sync');
 
 const app = express();
 
-// Payload limit for incoming requests (default 1 MB)
-const BODY_LIMIT = process.env.BODY_LIMIT || '1mb';
+// Payload limit for incoming requests (default 3 MB to accommodate CV uploads)
+const BODY_LIMIT = process.env.BODY_LIMIT || '3mb';
 
 // Default admin credentials (can be overridden with env vars)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@brillar.io';
