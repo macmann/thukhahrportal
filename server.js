@@ -60,7 +60,7 @@ function getEmpEmail(emp) {
 function getEmpRole(emp) {
   if (!emp) return 'employee';
   const key = Object.keys(emp).find(k => k.toLowerCase() === 'role');
-  const value = key ? String(emp[key] || '').toLowerCase() : '';
+  const value = key ? String(emp[key] || '').trim().toLowerCase() : '';
   return value === 'manager' ? 'manager' : 'employee';
 }
 
