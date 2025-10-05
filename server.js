@@ -9,6 +9,9 @@ const { parse } = require('csv-parse/sync');
 
 const app = express();
 
+// Default leave balance values assigned to new employees
+const DEFAULT_LEAVE_BALANCES = { annual: 10, casual: 5, medical: 14 };
+
 // Payload limit for incoming requests (default 3 MB to accommodate CV uploads)
 const BODY_LIMIT = process.env.BODY_LIMIT || '3mb';
 
@@ -51,15 +54,56 @@ async function sendEmail(to, subject, text) {
   }
 }
 
+function findEmployeeKey(emp, matcher) {
+  if (!emp || typeof emp !== 'object') return null;
+  return Object.keys(emp).find(key => {
+    if (typeof key !== 'string') return false;
+    const normalized = key.toLowerCase();
+    return matcher(normalized);
+  }) || null;
+}
+
+function normalizeEmployeeEmail(emp) {
+  if (!emp || typeof emp !== 'object') return false;
+  let updated = false;
+  const emailKeys = Object.keys(emp).filter(key => {
+    if (typeof key !== 'string') return false;
+    const normalized = key.toLowerCase();
+    return normalized === 'email' || normalized.replace(/\s+/g, '') === 'email' || normalized.includes('email');
+  });
+  let canonical = '';
+  emailKeys.forEach(key => {
+    const raw = emp[key];
+    if (raw === undefined || raw === null) return;
+    const trimmed = typeof raw === 'string' ? raw.trim() : String(raw).trim();
+    if (typeof raw === 'string' && raw !== trimmed) {
+      emp[key] = trimmed;
+      updated = true;
+    } else if (typeof raw !== 'string' && emp[key] !== trimmed) {
+      emp[key] = trimmed;
+      updated = true;
+    }
+    if (!canonical && trimmed) {
+      canonical = trimmed;
+    }
+  });
+  return updated;
+}
+
 function getEmpEmail(emp) {
   if (!emp) return '';
-  const key = Object.keys(emp).find(k => k.toLowerCase() === 'email');
-  return emp[key];
+  normalizeEmployeeEmail(emp);
+  const key = findEmployeeKey(emp, normalized =>
+    normalized === 'email' || normalized.replace(/\s+/g, '') === 'email' || normalized.includes('email')
+  );
+  if (!key) return '';
+  const value = emp[key];
+  return typeof value === 'string' ? value.trim() : String(value || '').trim();
 }
 
 function getEmpRole(emp) {
   if (!emp) return 'employee';
-  const key = Object.keys(emp).find(k => k.toLowerCase() === 'role');
+  const key = findEmployeeKey(emp, normalized => normalized === 'role' || normalized.includes('role'));
   const value = key ? String(emp[key] || '').trim().toLowerCase() : '';
   return value === 'manager' ? 'manager' : 'employee';
 }
@@ -67,24 +111,37 @@ function getEmpRole(emp) {
 function ensureLeaveBalances(emp) {
   if (!emp) return false;
   if (!emp.leaveBalances || typeof emp.leaveBalances !== 'object') {
-    emp.leaveBalances = { annual: 0, casual: 0, medical: 0 };
+    emp.leaveBalances = { ...DEFAULT_LEAVE_BALANCES };
     return true;
   }
-  const defaults = { annual: 0, casual: 0, medical: 0 };
+
   let updated = false;
-  Object.keys(defaults).forEach(key => {
+  Object.entries(DEFAULT_LEAVE_BALANCES).forEach(([key, defaultValue]) => {
     const current = emp.leaveBalances[key];
-    if (typeof current !== 'number' || Number.isNaN(current)) {
-      const num = Number(current);
-      emp.leaveBalances[key] = Number.isFinite(num) ? num : defaults[key];
+    if (current === undefined || current === null || current === '') {
+      emp.leaveBalances[key] = defaultValue;
+      updated = true;
+      return;
+    }
+
+    const numericValue = Number(current);
+    if (!Number.isFinite(numericValue)) {
+      if (emp.leaveBalances[key] !== defaultValue) {
+        emp.leaveBalances[key] = defaultValue;
+        updated = true;
+      }
+    } else if (emp.leaveBalances[key] !== numericValue) {
+      emp.leaveBalances[key] = numericValue;
       updated = true;
     }
   });
+
   return updated;
 }
 
 function upsertUserForEmployee(emp) {
   if (!emp) return false;
+  normalizeEmployeeEmail(emp);
   const email = (getEmpEmail(emp) || '').trim();
   if (!email) return false;
   db.data.users = db.data.users || [];
@@ -105,6 +162,10 @@ function upsertUserForEmployee(emp) {
     }
     if (existing.role !== role) {
       existing.role = role;
+      changed = true;
+    }
+    if (!existing.password) {
+      existing.password = 'brillar';
       changed = true;
     }
     return changed;
@@ -170,6 +231,15 @@ async function authRequired(req, res, next) {
     user = { id: 'admin', email: ADMIN_EMAIL, role: 'manager', employeeId: null };
   }
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role !== 'manager') {
+    const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
+    const emp = employees.find(e => e.id == user.employeeId);
+    const status = (emp?.status || '').toString().toLowerCase();
+    if (!emp || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
+      delete SESSION_TOKENS[token];
+      return res.status(403).json({ error: 'Employee account is inactive' });
+    }
+  }
   req.user = user;
   next();
 }
@@ -190,6 +260,7 @@ async function ensureUsersForExistingEmployees() {
   }
   let changed = false;
   db.data.employees.forEach(emp => {
+    if (normalizeEmployeeEmail(emp)) changed = true;
     if (ensureLeaveBalances(emp)) changed = true;
     if (upsertUserForEmployee(emp)) changed = true;
   });
@@ -268,6 +339,14 @@ init().then(async () => {
 
     let userObj;
     if (user) {
+      if (user.role !== 'manager') {
+        const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
+        const emp = employees.find(e => e.id == user.employeeId);
+        const status = (emp?.status || '').toString().toLowerCase();
+        if (!emp || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
+          return res.status(403).json({ error: 'Employee account is inactive' });
+        }
+      }
       userObj = {
         id: user.id,
         email: user.email,
@@ -323,6 +402,11 @@ init().then(async () => {
     const payload = req.body;
     const employee = { id, ...payload };
     ensureLeaveBalances(employee);
+    normalizeEmployeeEmail(employee);
+    const email = getEmpEmail(employee);
+    if (!email) {
+      return res.status(400).json({ error: 'Employee email is required to create login credentials.' });
+    }
     db.data.employees.push(employee);
     if (upsertUserForEmployee(employee)) {
       // When upsert adds a new user, db.data.users is already updated.
@@ -358,6 +442,7 @@ init().then(async () => {
           ...row
         };
         ensureLeaveBalances(emp);
+        normalizeEmployeeEmail(emp);
         db.data.employees.push(emp);
         upsertUserForEmployee(emp);
       });
@@ -374,6 +459,7 @@ init().then(async () => {
     const emp = db.data.employees.find(e => e.id == req.params.id);
     if (!emp) return res.status(404).json({ error: 'Not found' });
     Object.assign(emp, req.body);
+    normalizeEmployeeEmail(emp);
     ensureLeaveBalances(emp);
     upsertUserForEmployee(emp);
     await db.write();
@@ -1070,6 +1156,12 @@ init().then(async () => {
       return res.status(403).json({ error: 'Cannot apply for another employee' });
     }
     const { employeeId, type, from, to, reason, halfDay, halfDayType } = req.body;
+    const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
+    const employee = employees.find(e => e.id == employeeId);
+    const status = (employee?.status || '').toString().toLowerCase();
+    if (!employee || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
+      return res.status(403).json({ error: 'Employee account is inactive' });
+    }
     const id = Date.now();
     const newApp = {
       id,
