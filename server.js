@@ -853,7 +853,7 @@ init().then(async () => {
   );
 
   // ---- HOLIDAY CONFIGURATION ----
-  app.get('/holidays', authRequired, managerOnly, async (req, res) => {
+  app.get('/holidays', authRequired, async (req, res) => {
     await db.read();
     const holidays = Array.isArray(db.data.holidays) ? db.data.holidays : [];
     const sorted = [...holidays].sort((a, b) => a.date.localeCompare(b.date));
