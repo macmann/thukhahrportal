@@ -1149,59 +1149,358 @@ init().then(async () => {
     return days;
   }
 
-  // ---- APPLY FOR LEAVE ----
-  app.post('/applications', authRequired, async (req, res) => {
-    await db.read();
-    if (req.user.role !== 'manager' && req.user.employeeId != req.body.employeeId) {
-      return res.status(403).json({ error: 'Cannot apply for another employee' });
-    }
-    const { employeeId, type, from, to, reason, halfDay, halfDayType } = req.body;
-    const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
-    const employee = employees.find(e => e.id == employeeId);
-    const status = (employee?.status || '').toString().toLowerCase();
-    if (!employee || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
-      return res.status(403).json({ error: 'Employee account is inactive' });
-    }
-    const id = Date.now();
-    const newApp = {
-      id,
+  async function createLeaveApplication(payload, currentUser) {
+    const {
       employeeId,
       type,
       from,
       to,
       reason,
-      status: 'pending',
-      ...(halfDay ? { halfDay: true, halfDayType } : {})
+      halfDay,
+      halfDayType
+    } = payload || {};
+
+    await db.read();
+    db.data.applications = Array.isArray(db.data.applications)
+      ? db.data.applications
+      : [];
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+    db.data.users = Array.isArray(db.data.users) ? db.data.users : [];
+
+    if (!employeeId) {
+      return { status: 400, error: 'Employee ID is required.' };
+    }
+
+    if (
+      currentUser.role !== 'manager' &&
+      currentUser.employeeId != employeeId
+    ) {
+      return { status: 403, error: 'Cannot apply for another employee' };
+    }
+
+    const supportedTypes = Object.keys(DEFAULT_LEAVE_BALANCES);
+    const normalizedType = typeof type === 'string' ? type.trim().toLowerCase() : '';
+    if (!supportedTypes.includes(normalizedType)) {
+      return { status: 400, error: 'Unsupported leave type.' };
+    }
+
+    if (!from || !to) {
+      return { status: 400, error: 'Start and end dates are required.' };
+    }
+
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+      return { status: 400, error: 'Invalid date format.' };
+    }
+
+    if (toDate < fromDate) {
+      return { status: 400, error: 'End date cannot be before start date.' };
+    }
+
+    const employees = db.data.employees;
+    const employee = employees.find(e => e.id == employeeId);
+    const status = (employee?.status || '').toString().toLowerCase();
+    if (!employee || ['inactive', 'deactivated', 'disabled'].includes(status)) {
+      return { status: 403, error: 'Employee account is inactive' };
+    }
+
+    const leaveBalances =
+      employee.leaveBalances && typeof employee.leaveBalances === 'object'
+        ? { ...employee.leaveBalances }
+        : { ...DEFAULT_LEAVE_BALANCES };
+
+    const normalizedFrom =
+      typeof from === 'string' ? from.trim() : fromDate.toISOString();
+    const normalizedTo = typeof to === 'string' ? to.trim() : toDate.toISOString();
+
+    const newApp = {
+      id: Date.now(),
+      employeeId,
+      type: normalizedType,
+      from: normalizedFrom,
+      to: normalizedTo,
+      reason: reason || '',
+      status: 'pending'
     };
 
-    // Deduct balance immediately (pending means leave already deducted)
-    const emp = db.data.employees.find(e => e.id == employeeId);
-    if (emp && emp.leaveBalances[type] !== undefined) {
-      let bal = Number(emp.leaveBalances[type]) || 0;
-      let days = getLeaveDays(newApp);
-      if (bal < days) {
-        return res.status(400).json({ error: 'Insufficient leave balance.' });
+    if (halfDay) {
+      newApp.halfDay = true;
+      if (halfDayType) {
+        newApp.halfDayType = halfDayType;
       }
-      emp.leaveBalances[type] = bal - days;
     }
+
+    const days = getLeaveDays(newApp);
+    const balance = Number(leaveBalances[normalizedType]) || 0;
+    if (balance < days) {
+      return { status: 400, error: 'Insufficient leave balance.' };
+    }
+
+    leaveBalances[normalizedType] = balance - days;
+    employee.leaveBalances = leaveBalances;
 
     db.data.applications.push(newApp);
     await db.write();
 
-    // Notify managers of new application
-    const managers = (db.data.users || []).filter(u => u.role === 'manager');
+    const managers = db.data.users.filter(u => u.role === 'manager');
     const managerEmails = managers.map(m => m.email).filter(Boolean);
-    const empEmail = getEmpEmail(emp);
-    const name = emp?.name || empEmail || `Employee ${employeeId}`;
+    const empEmail = getEmpEmail(employee);
+    const name = employee?.name || empEmail || `Employee ${employeeId}`;
     if (managerEmails.length) {
       await sendEmail(
         managerEmails.join(','),
         `Leave request from ${name}`,
-        `${name} applied for ${type} leave from ${from} to ${to}.`
+        `${name} applied for ${normalizedType} leave from ${normalizedFrom} to ${normalizedTo}.`
       );
     }
 
-    res.status(201).json(newApp);
+    return { status: 201, application: newApp };
+  }
+
+  // ---- APPLY FOR LEAVE ----
+  app.post('/applications', authRequired, async (req, res) => {
+    const result = await createLeaveApplication(req.body, req.user);
+    if (result.error) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    res.status(result.status).json(result.application);
+  });
+
+  app.get('/api/me', authRequired, (req, res) => {
+    res.json({
+      userId: req.user.id,
+      employeeId: req.user.employeeId ?? null,
+      email: req.user.email || null,
+      role: req.user.role
+    });
+  });
+
+  app.get('/api/leave-summary', authRequired, async (req, res) => {
+    const targetEmployeeId =
+      req.user.role === 'manager' && req.query.employeeId
+        ? req.query.employeeId
+        : req.user.employeeId;
+
+    if (!targetEmployeeId) {
+      return res.status(400).json({ error: 'Employee ID is required.' });
+    }
+
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+    db.data.applications = Array.isArray(db.data.applications)
+      ? db.data.applications
+      : [];
+
+    const employee = db.data.employees.find(e => e.id == targetEmployeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const leaveBalances =
+      employee.leaveBalances && typeof employee.leaveBalances === 'object'
+        ? { ...employee.leaveBalances }
+        : { ...DEFAULT_LEAVE_BALANCES };
+
+    const now = new Date();
+    const previousLeaveDays = db.data.applications
+      .filter(app => app.employeeId == targetEmployeeId && app.status === 'approved')
+      .filter(app => {
+        const toDate = new Date(app.to);
+        return !Number.isNaN(toDate.getTime()) && toDate < now;
+      })
+      .reduce((sum, app) => sum + getLeaveDays(app), 0);
+
+    res.json({
+      employeeId: employee.id,
+      leaveBalances,
+      previousLeaveDays
+    });
+  });
+
+  app.post('/api/leaves', authRequired, async (req, res) => {
+    const result = await createLeaveApplication(req.body, req.user);
+    if (result.error) {
+      return res
+        .status(result.status)
+        .json({ success: false, error: result.error });
+    }
+    res
+      .status(result.status)
+      .json({ success: true, application: result.application });
+  });
+
+  app.get('/api/openapi', authRequired, (req, res) => {
+    const openApiSpec = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Brillar HR Portal Leave APIs',
+        version: '1.0.0',
+        description:
+          'API specification for leave management helper endpoints.'
+      },
+      servers: [{ url: 'http://localhost:3000' }],
+      paths: {
+        '/api/me': {
+          get: {
+            summary: 'Get current user identifier',
+            security: [{ bearerAuth: [] }],
+            responses: {
+              200: {
+                description: 'Authenticated user information',
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/CurrentUserResponse' }
+                  }
+                }
+              }
+            }
+          }
+        },
+        '/api/leave-summary': {
+          get: {
+            summary: 'Retrieve leave balances and historical usage',
+            security: [{ bearerAuth: [] }],
+            parameters: [
+              {
+                in: 'query',
+                name: 'employeeId',
+                schema: { type: 'string' },
+                description:
+                  'Optional employee identifier. Managers can view other employees.'
+              }
+            ],
+            responses: {
+              200: {
+                description: 'Leave balances and usage metrics',
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/LeaveSummaryResponse' }
+                  }
+                }
+              }
+            }
+          }
+        },
+        '/api/leaves': {
+          post: {
+            summary: 'Apply for leave',
+            security: [{ bearerAuth: [] }],
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/LeaveApplicationRequest' }
+                }
+              }
+            },
+            responses: {
+              201: {
+                description: 'Leave application created',
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/LeaveApplicationResponse' }
+                  }
+                }
+              },
+              400: { description: 'Validation error' },
+              403: { description: 'Forbidden' }
+            }
+          }
+        },
+        '/api/openapi': {
+          get: {
+            summary: 'Retrieve OpenAPI specification',
+            security: [{ bearerAuth: [] }],
+            responses: {
+              200: {
+                description: 'OpenAPI specification JSON string',
+                content: {
+                  'application/json': {
+                    schema: { type: 'string' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT'
+          }
+        },
+        schemas: {
+          CurrentUserResponse: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string' },
+              employeeId: { type: ['string', 'null'] },
+              email: { type: ['string', 'null'], format: 'email' },
+              role: { type: 'string' }
+            }
+          },
+          LeaveSummaryResponse: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
+              leaveBalances: {
+                type: 'object',
+                additionalProperties: { type: 'number' }
+              },
+              previousLeaveDays: { type: 'number' }
+            }
+          },
+          LeaveApplicationRequest: {
+            type: 'object',
+            required: ['employeeId', 'type', 'from', 'to'],
+            properties: {
+              employeeId: { type: 'string' },
+              type: {
+                type: 'string',
+                enum: Object.keys(DEFAULT_LEAVE_BALANCES)
+              },
+              from: { type: 'string', format: 'date' },
+              to: { type: 'string', format: 'date' },
+              reason: { type: 'string' },
+              halfDay: { type: 'boolean' },
+              halfDayType: { type: 'string' }
+            }
+          },
+          LeaveApplicationResponse: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              application: {
+                type: 'object',
+                properties: {
+                  id: { type: 'integer' },
+                  employeeId: { type: 'string' },
+                  type: { type: 'string' },
+                  from: { type: 'string' },
+                  to: { type: 'string' },
+                  reason: { type: 'string' },
+                  status: { type: 'string' },
+                  halfDay: { type: 'boolean' },
+                  halfDayType: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+
+    res
+      .type('application/json')
+      .send(JSON.stringify(openApiSpec, null, 2));
   });
 
   // ---- APPROVE LEAVE ----
