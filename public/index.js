@@ -4,6 +4,8 @@ let currentUser = null;
 let calendarCurrent = new Date();
 let empSearchTerm = '';
 let companyHolidays = [];
+let holidaysLoaded = false;
+let holidaysLoading = null;
 
 const PIPELINE_STATUSES = ['New', 'Selected for Interview', 'Interview Completed', 'Rejected', 'Hired'];
 let recruitmentPositions = [];
@@ -209,18 +211,116 @@ function formatHolidayDate(value) {
   });
 }
 
-async function loadHolidays() {
+function formatHolidayWeekday(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { weekday: 'long' });
+}
+
+async function fetchHolidays({ force = false } = {}) {
+  if (!force && holidaysLoaded && !holidaysLoading) {
+    return companyHolidays;
+  }
+  if (!force && holidaysLoading) {
+    return holidaysLoading;
+  }
+  const request = (async () => {
+    try {
+      const res = await apiFetch('/holidays');
+      if (!res.ok) throw new Error('Failed to load holidays');
+      const data = await res.json();
+      companyHolidays = Array.isArray(data) ? data.slice() : [];
+      companyHolidays.sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+      holidaysLoaded = true;
+      return companyHolidays;
+    } catch (err) {
+      holidaysLoaded = false;
+      throw err;
+    } finally {
+      holidaysLoading = null;
+    }
+  })();
+  holidaysLoading = request;
+  return request;
+}
+
+function renderHolidayHighlights(options = {}) {
+  const container = document.getElementById('holidayHighlights');
+  if (!container) return;
+  const { error } = options;
+  if (error) {
+    container.innerHTML = `<p class="text-muted" style="font-style: italic; color:#b3261e;">${escapeHtml(error)}</p>`;
+    return;
+  }
+  const holidays = Array.isArray(companyHolidays) ? companyHolidays.slice() : [];
+  if (!holidays.length) {
+    container.innerHTML = '<p class="text-muted" style="font-style: italic;">No upcoming holidays recorded.</p>';
+    return;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcoming = holidays.filter(holiday => {
+    if (!holiday || !holiday.date) return false;
+    const parsed = new Date(holiday.date);
+    if (Number.isNaN(parsed.getTime())) return false;
+    parsed.setHours(0, 0, 0, 0);
+    return parsed >= today;
+  });
+  const source = upcoming.length ? upcoming : holidays;
+  const limit = 5;
+  const display = source.slice(0, limit);
+  if (!display.length) {
+    container.innerHTML = '<p class="text-muted" style="font-style: italic;">No upcoming holidays recorded.</p>';
+    return;
+  }
+  const remainder = source.length - display.length;
+  const needsFallbackNotice = upcoming.length === 0;
+  const items = display.map(holiday => {
+    const nameText = holiday?.name ? String(holiday.name) : 'Holiday';
+    const safeName = escapeHtml(nameText);
+    const dateValue = holiday?.date ? String(holiday.date) : '';
+    const parsed = dateValue ? new Date(dateValue) : null;
+    const hasValidDate = parsed && !Number.isNaN(parsed.getTime());
+    let monthLabel = '';
+    let dayLabel = '';
+    const detailParts = [];
+    if (hasValidDate) {
+      monthLabel = parsed.toLocaleString(undefined, { month: 'short' });
+      dayLabel = String(parsed.getDate()).padStart(2, '0');
+      const pretty = formatHolidayDate(dateValue);
+      if (pretty && pretty !== '-') detailParts.push(pretty);
+      const weekday = formatHolidayWeekday(dateValue);
+      if (weekday) detailParts.push(weekday);
+    } else if (dateValue) {
+      detailParts.push(dateValue);
+    }
+    const dateMarkup = hasValidDate
+      ? `<div class="holiday-preview-date"><span class="holiday-preview-date__month">${escapeHtml(monthLabel)}</span><span class="holiday-preview-date__day">${escapeHtml(dayLabel)}</span></div>`
+      : `<div class="holiday-preview-date holiday-preview-date--text">${escapeHtml(dateValue || '-')}</div>`;
+    const metaMarkup = detailParts.length
+      ? `<div class="holiday-preview-meta">${escapeHtml(detailParts.join(' • '))}</div>`
+      : '';
+    return `<div class="holiday-preview-item">${dateMarkup}<div class="holiday-preview-info"><div class="holiday-preview-name">${safeName}</div>${metaMarkup}</div></div>`;
+  }).join('');
+  const fallbackNotice = needsFallbackNotice
+    ? '<p class="holiday-preview-empty text-muted">No upcoming holidays scheduled. Showing the most recent entries.</p>'
+    : '';
+  const moreMarkup = remainder > 0
+    ? `<div class="holiday-preview-more text-quiet">+${remainder} more holiday${remainder === 1 ? '' : 's'} scheduled</div>`
+    : '';
+  container.innerHTML = fallbackNotice + items + moreMarkup;
+}
+
+async function loadHolidays(options = {}) {
   if (!currentUser || currentUser.role !== 'manager') return;
+  const { force = true } = options;
   const list = document.getElementById('holidayList');
   if (list && !list.dataset.persist) {
     list.innerHTML = '<p class="text-muted" style="font-style: italic;">Loading holidays...</p>';
   }
   try {
-    const res = await apiFetch('/holidays');
-    if (!res.ok) throw new Error('Failed to load holidays');
-    const data = await res.json();
-    companyHolidays = Array.isArray(data) ? data : [];
-    companyHolidays.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    await fetchHolidays({ force });
     renderHolidayList();
   } catch (err) {
     console.error('Failed to load holidays', err);
@@ -228,37 +328,41 @@ async function loadHolidays() {
       list.innerHTML = '<p class="text-muted" style="font-style: italic; color:#b3261e;">Unable to load holidays.</p>';
       list.dataset.persist = 'true';
     }
+    renderHolidayHighlights({ error: 'Unable to load holidays.' });
   }
 }
 
 function renderHolidayList() {
   const list = document.getElementById('holidayList');
-  if (!list) return;
-  list.dataset.persist = 'true';
-  if (!Array.isArray(companyHolidays) || companyHolidays.length === 0) {
-    list.innerHTML = '<p class="text-muted" style="font-style: italic;">No holidays added yet.</p>';
-    return;
-  }
-  const items = companyHolidays.map(holiday => {
-    const id = holiday?.id ? escapeHtml(String(holiday.id)) : '';
-    const name = holiday?.name ? escapeHtml(String(holiday.name)) : '';
-    const iso = holiday?.date ? escapeHtml(String(holiday.date)) : '';
-    const formatted = escapeHtml(formatHolidayDate(holiday?.date));
-    return `
-      <div class="holiday-item">
-        <div class="holiday-item__meta">
-          <div class="holiday-item__date">${formatted}</div>
-          <div class="holiday-item__name">${name}</div>
-          <div class="holiday-item__iso text-quiet">${iso}</div>
+  if (list) {
+    list.dataset.persist = 'true';
+    if (!Array.isArray(companyHolidays) || companyHolidays.length === 0) {
+      list.innerHTML = '<p class="text-muted" style="font-style: italic;">No holidays added yet.</p>';
+      renderHolidayHighlights();
+      return;
+    }
+    const items = companyHolidays.map(holiday => {
+      const id = holiday?.id ? escapeHtml(String(holiday.id)) : '';
+      const name = holiday?.name ? escapeHtml(String(holiday.name)) : '';
+      const iso = holiday?.date ? escapeHtml(String(holiday.date)) : '';
+      const formatted = escapeHtml(formatHolidayDate(holiday?.date));
+      return `
+        <div class="holiday-item">
+          <div class="holiday-item__meta">
+            <div class="holiday-item__date">${formatted}</div>
+            <div class="holiday-item__name">${name}</div>
+            <div class="holiday-item__iso text-quiet">${iso}</div>
+          </div>
+          <button type="button" class="md-button md-button--text md-button--small holiday-item__delete" data-action="delete-holiday" data-id="${id}">
+            <span class="material-symbols-rounded">delete</span>
+            Remove
+          </button>
         </div>
-        <button type="button" class="md-button md-button--text md-button--small holiday-item__delete" data-action="delete-holiday" data-id="${id}">
-          <span class="material-symbols-rounded">delete</span>
-          Remove
-        </button>
-      </div>
-    `;
-  });
-  list.innerHTML = items.join('');
+      `;
+    });
+    list.innerHTML = items.join('');
+  }
+  renderHolidayHighlights();
 }
 
 async function onHolidaySubmit(ev) {
@@ -292,9 +396,14 @@ async function onHolidaySubmit(ev) {
     } else {
       companyHolidays = [data];
     }
+    holidaysLoaded = true;
     renderHolidayList();
     if (dateInput) dateInput.value = '';
     if (nameInput) nameInput.value = '';
+    const reportPanel = document.getElementById('leaveReportPanel');
+    if (currentUser?.role === 'manager' && reportPanel && !reportPanel.classList.contains('hidden')) {
+      await loadLeaveCalendar();
+    }
   } catch (err) {
     console.error('Failed to add holiday', err);
     alert(err.message || 'Failed to add holiday.');
@@ -314,7 +423,12 @@ async function onHolidayListClick(ev) {
       throw new Error(data.error || 'Failed to delete holiday.');
     }
     companyHolidays = Array.isArray(companyHolidays) ? companyHolidays.filter(h => h.id !== id) : [];
+    holidaysLoaded = true;
     renderHolidayList();
+    const reportPanel = document.getElementById('leaveReportPanel');
+    if (currentUser?.role === 'manager' && reportPanel && !reportPanel.classList.contains('hidden')) {
+      await loadLeaveCalendar();
+    }
   } catch (err) {
     console.error('Failed to delete holiday', err);
     alert(err.message || 'Failed to delete holiday.');
@@ -1345,6 +1459,13 @@ async function init() {
     await initRecruitment();
   }
 
+  fetchHolidays().then(() => {
+    renderHolidayHighlights();
+  }).catch(err => {
+    console.error('Failed to fetch holidays', err);
+    renderHolidayHighlights({ error: 'Unable to load holidays.' });
+  });
+
   await loadEmployeesPortal();
   await loadEmployeesManage();
   await onEmployeeChange();
@@ -2110,6 +2231,20 @@ async function loadLeaveCalendar() {
   const data = await getJSON(`/leave-calendar?start=${startStr}&end=${endStr}`);
   const map = {};
   data.forEach(d => { map[d.date] = d.entries; });
+  let holidaysForCalendar = [];
+  try {
+    holidaysForCalendar = await fetchHolidays();
+  } catch (err) {
+    console.error('Failed to fetch holidays for calendar', err);
+    holidaysForCalendar = Array.isArray(companyHolidays) ? companyHolidays : [];
+  }
+  const holidayMap = {};
+  (Array.isArray(holidaysForCalendar) ? holidaysForCalendar : []).forEach(holiday => {
+    if (!holiday || !holiday.date) return;
+    const iso = String(holiday.date);
+    if (!holidayMap[iso]) holidayMap[iso] = [];
+    holidayMap[iso].push(holiday);
+  });
   const grid = document.getElementById('leaveCalendar');
   if (!grid) return;
   document.getElementById('calMonth').textContent = monthStart.toLocaleString('default', {month:'long', year:'numeric'});
@@ -2127,6 +2262,7 @@ async function loadLeaveCalendar() {
     dayRef.setHours(0,0,0,0);
     const dateStr = date.toLocaleDateString('en-CA');
     const entries = map[dateStr] || [];
+    const holidayEntries = holidayMap[dateStr] || [];
     const future  = dayRef > today;
     const isToday = dayRef.getTime() === today.getTime();
     const classes = [];
@@ -2135,8 +2271,20 @@ async function loadLeaveCalendar() {
     }
     if (future) classes.push('future');
     if (isToday) classes.push('calendar-today');
-    let content = `<div class="calendar-date">${d}</div>`;
+    const contentParts = [`<div class="calendar-date">${d}</div>`];
     const titleParts = [];
+    if (holidayEntries.length) {
+      classes.push('calendar-holiday');
+      const holidayNames = Array.from(new Set(holidayEntries.map(h => {
+        const name = h?.name ? String(h.name).trim() : '';
+        return name || 'Holiday';
+      })));
+      if (!holidayNames.length) holidayNames.push('Holiday');
+      holidayNames.forEach(name => titleParts.push(`Holiday - ${name}`));
+      const labelText = holidayNames.join(', ');
+      const safeLabel = escapeHtml(labelText);
+      contentParts.push(`<div class="calendar-holiday-label"><span class="material-symbols-rounded">celebration</span><span>${safeLabel}</span></div>`);
+    }
     if (entries.length) {
       const namesMarkup = entries.map(e => {
         const rawType = (e.type || '').toString();
@@ -2152,11 +2300,12 @@ async function loadLeaveCalendar() {
         const entryTitle = typeLabel ? `${e.name} • ${typeLabel}` : e.name;
         return `<div class="calendar-name" title="${entryTitle}"><span class="calendar-employee">${e.name}</span>${typeMarkup}</div>`;
       }).join('');
-      content += `<div class="calendar-names">${namesMarkup}</div>`;
+      contentParts.push(`<div class="calendar-names">${namesMarkup}</div>`);
     }
     const title = titleParts.join('\n');
-    const titleAttr = title ? ` title="${title}"` : '';
-    grid.innerHTML += `<div class="${classes.join(' ')}"${titleAttr}>${content}</div>`;
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+    const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
+    grid.innerHTML += `<div${classAttr}${titleAttr}>${contentParts.join('')}</div>`;
   }
 }
 
