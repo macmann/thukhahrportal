@@ -270,13 +270,17 @@ function renderProfileSection(section) {
         </div>
       `;
     }
+    const inputId = makeDynamicFieldId('profile', `${key}-readonly`);
     const hasValue = value && value.trim() !== '';
-    const valueClass = hasValue ? 'profile-field__value' : 'profile-field__value profile-field__value--empty';
     const displayValue = hasValue ? escapeHtml(value) : 'Not provided';
+    const valueAttr = ` value="${displayValue}"`;
+    const emptyClass = hasValue ? '' : ' md-input--empty';
     return `
-      <div class="profile-field">
-        <span class="profile-field__label">${label}</span>
-        <span class="${valueClass}">${displayValue}</span>
+      <div class="md-field md-field--readonly">
+        <label class="md-label" for="${escapeHtml(inputId)}">${label}</label>
+        <div class="md-input-wrapper md-input-wrapper--readonly">
+          <input class="md-input${emptyClass}" id="${escapeHtml(inputId)}" type="text"${valueAttr} disabled>
+        </div>
       </div>
     `;
   }).join('');

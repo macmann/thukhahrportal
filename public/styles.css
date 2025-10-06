@@ -75,47 +75,27 @@
 
 .profile-section-grid {
   display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: stretch;
+}
+
+.profile-section-grid .md-card {
+  height: 100%;
+}
+
+.profile-section-form {
   gap: 20px;
 }
 
 .profile-section-form .md-field {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .profile-form-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 8px;
-}
-
-.profile-field {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 8px 0;
-  border-bottom: 1px solid #e2e8f0;
-  gap: 16px;
-}
-
-.profile-field:last-child {
-  border-bottom: none;
-}
-
-.profile-field__label {
-  font-weight: 600;
-  color: #475569;
-}
-
-.profile-field__value {
-  text-align: right;
-  color: #111827;
-  font-weight: 500;
-  word-break: break-word;
-}
-
-.profile-field__value--empty {
-  color: #94a3b8;
-  font-style: italic;
+  margin-top: 4px;
 }
 
 .profile-feedback {
@@ -137,8 +117,3 @@
   min-width: 0;
 }
 
-.profile-section-form .profile-field {
-  border-bottom: none;
-  padding: 0;
-  margin-bottom: 12px;
-}
