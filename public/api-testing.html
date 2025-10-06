@@ -313,6 +313,26 @@
     const copyCurlBtn = document.getElementById('copyCurlBtn');
     const curlStatus = document.getElementById('curlStatus');
 
+    const searchParams = new URLSearchParams(window.location.search);
+    const tokenParamOrder = ['bearer', 'token', 'selfBearerToken'];
+    let tokenFromQuery = '';
+    for (const key of tokenParamOrder) {
+      const candidate = searchParams.get(key);
+      if (candidate && candidate.trim()) {
+        tokenFromQuery = candidate.trim();
+        break;
+      }
+    }
+    if (tokenFromQuery) {
+      setToken(tokenFromQuery, { statusMessage: 'Token supplied via URL query' });
+      try {
+        const cleanUrl = `${window.location.pathname}${window.location.hash || ''}`;
+        window.history.replaceState({}, document.title, cleanUrl);
+      } catch (err) {
+        // Non-fatal: best effort cleanup of the token-bearing URL.
+      }
+    }
+
     const endpointDefinitions = [
       {
         id: 'me',
@@ -512,11 +532,12 @@
       if (type === 'error') el.classList.add('api-test__status--error');
     }
 
-    function setToken(token) {
+    function setToken(token, options = {}) {
       state.token = token || '';
       tokenField.value = state.token;
       if (state.token) {
-        setStatus(tokenStatus, 'Token ready for use', 'success');
+        const message = options.statusMessage || 'Token ready for use';
+        setStatus(tokenStatus, message, 'success');
       } else {
         setStatus(tokenStatus, 'Token cleared');
       }
