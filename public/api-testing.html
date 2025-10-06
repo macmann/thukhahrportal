@@ -118,9 +118,26 @@
       font-size: 0.95rem;
       resize: vertical;
     }
+    textarea.api-test__token--body {
+      min-height: 140px;
+    }
     .api-test__grid {
       display: grid;
       gap: 1.5rem;
+    }
+    .api-test__note {
+      margin: 0;
+      color: #52616b;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .api-test__note strong {
+      color: #1f2933;
+    }
+    .api-test__note em {
+      font-style: normal;
+      color: #7b5cff;
+      font-weight: 500;
     }
     @media (min-width: 720px) {
       .api-test__two-column {
@@ -204,24 +221,47 @@
 
     <section class="api-test__card">
       <h2><span class="material-symbols-rounded">manage_accounts</span>Call protected routes</h2>
-      <p class="api-test__description">Send requests with the token injected into an <code class="api-test__code-inline">Authorization: Bearer &lt;token&gt;</code> header. Start with <code class="api-test__code-inline">GET /api/me</code>.</p>
-      <form id="meForm" class="api-test__form">
-        <div class="md-field">
-          <label class="md-label" for="meEndpoint">Endpoint path</label>
-          <div class="md-input-wrapper">
-            <span class="material-symbols-rounded">share</span>
-            <input class="md-input" id="meEndpoint" type="text" required value="/api/me">
+      <p class="api-test__description">Send requests with the token injected into an <code class="api-test__code-inline">Authorization: Bearer &lt;token&gt;</code> header. Pick any of the available endpoints below or create a custom request.</p>
+      <form id="requestForm" class="api-test__form">
+        <div class="api-test__stack">
+          <label class="md-label" for="endpointPicker">Endpoint preset</label>
+          <select class="md-input" id="endpointPicker"></select>
+          <p id="endpointDetails" class="api-test__note"></p>
+        </div>
+        <div class="api-test__two-column">
+          <div class="md-field">
+            <label class="md-label" for="requestMethod">HTTP method</label>
+            <div class="md-input-wrapper">
+              <span class="material-symbols-rounded">swap_vert</span>
+              <select class="md-input" id="requestMethod">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+              </select>
+            </div>
+          </div>
+          <div class="md-field">
+            <label class="md-label" for="requestEndpoint">Endpoint path</label>
+            <div class="md-input-wrapper">
+              <span class="material-symbols-rounded">share</span>
+              <input class="md-input" id="requestEndpoint" type="text" required value="/api/me">
+            </div>
           </div>
         </div>
+        <div class="api-test__stack">
+          <label class="md-label" for="requestBody">JSON body (optional)</label>
+          <textarea id="requestBody" class="api-test__token api-test__token--body" placeholder="Provide a JSON payload for POST/PUT requests"></textarea>
+        </div>
         <div class="api-test__actions">
-          <button type="submit" class="md-button md-button--filled" id="meSubmitBtn">
+          <button type="submit" class="md-button md-button--filled" id="requestSubmitBtn">
             <span class="material-symbols-rounded">play_arrow</span>
             Send request
           </button>
-          <span id="meStatus" class="api-test__status"></span>
+          <span id="requestStatus" class="api-test__status"></span>
         </div>
       </form>
-      <pre class="api-test__pre" id="meOutput" aria-live="polite">Awaiting request…</pre>
+      <pre class="api-test__pre" id="requestOutput" aria-live="polite">Awaiting request…</pre>
     </section>
 
     <section class="api-test__card">
@@ -247,7 +287,9 @@
   <script>
     const state = {
       token: '',
-      baseUrl: window.location.origin
+      baseUrl: window.location.origin,
+      selectedEndpointId: 'me',
+      lastAppliedSample: ''
     };
 
     const baseUrlInput = document.getElementById('baseUrl');
@@ -258,14 +300,203 @@
     const tokenField = document.getElementById('tokenField');
     const tokenStatus = document.getElementById('tokenStatus');
     const copyTokenBtn = document.getElementById('copyTokenBtn');
-    const meForm = document.getElementById('meForm');
-    const meOutput = document.getElementById('meOutput');
-    const meStatus = document.getElementById('meStatus');
-    const meSubmitBtn = document.getElementById('meSubmitBtn');
-    const meEndpoint = document.getElementById('meEndpoint');
+    const endpointPicker = document.getElementById('endpointPicker');
+    const endpointDetails = document.getElementById('endpointDetails');
+    const requestForm = document.getElementById('requestForm');
+    const requestMethod = document.getElementById('requestMethod');
+    const requestEndpoint = document.getElementById('requestEndpoint');
+    const requestBodyField = document.getElementById('requestBody');
+    const requestOutput = document.getElementById('requestOutput');
+    const requestStatus = document.getElementById('requestStatus');
+    const requestSubmitBtn = document.getElementById('requestSubmitBtn');
     const curlCommand = document.getElementById('curlCommand');
     const copyCurlBtn = document.getElementById('copyCurlBtn');
     const curlStatus = document.getElementById('curlStatus');
+
+    const endpointDefinitions = [
+      {
+        id: 'me',
+        label: 'GET /api/me',
+        method: 'GET',
+        path: '/api/me',
+        description: 'Returns the authenticated account ID, linked employee ID, email, and role.'
+      },
+      {
+        id: 'myProfile',
+        label: 'GET /api/my-profile',
+        method: 'GET',
+        path: '/api/my-profile',
+        description: 'Fetches the detailed profile for the signed-in employee, grouped by section.'
+      },
+      {
+        id: 'updateProfile',
+        label: 'PUT /api/my-profile',
+        method: 'PUT',
+        path: '/api/my-profile',
+        description: 'Update editable personal or contact details for the current employee.',
+        sampleBody: {
+          updates: {
+            address: '123 Updated Avenue, Springfield',
+            mobile: '+1 555 0100'
+          }
+        }
+      },
+      {
+        id: 'leaveSummary',
+        label: 'GET /api/leave-summary',
+        method: 'GET',
+        path: '/api/leave-summary',
+        description: 'Summarises leave balances and historical usage. Managers can add ?employeeId= to inspect another employee.'
+      },
+      {
+        id: 'applyLeave',
+        label: 'POST /api/leaves',
+        method: 'POST',
+        path: '/api/leaves',
+        description: 'Submit a leave application. Managers can submit on behalf of their team.',
+        sampleBody: {
+          employeeId: 1,
+          type: 'annual',
+          from: '2024-01-15',
+          to: '2024-01-17',
+          reason: 'Family travel'
+        }
+      },
+      {
+        id: 'holidays',
+        label: 'GET /holidays',
+        method: 'GET',
+        path: '/holidays',
+        description: 'Lists configured company holidays for quick reference.'
+      },
+      {
+        id: 'createHoliday',
+        label: 'POST /holidays',
+        method: 'POST',
+        path: '/holidays',
+        description: 'Managers can add a holiday to the shared calendar.',
+        sampleBody: {
+          date: '2024-12-25',
+          name: 'Christmas Day'
+        },
+        requiresManager: true
+      },
+      {
+        id: 'listEmployees',
+        label: 'GET /employees',
+        method: 'GET',
+        path: '/employees',
+        description: 'Managers see the full directory; employees only see themselves.',
+        requiresManager: true
+      },
+      {
+        id: 'createEmployee',
+        label: 'POST /employees',
+        method: 'POST',
+        path: '/employees',
+        description: 'Managers can create a new employee record and matching login.',
+        sampleBody: {
+          name: 'New Teammate',
+          email: 'new.hire@example.com',
+          department: 'Engineering',
+          role: 'employee',
+          status: 'active'
+        },
+        requiresManager: true
+      },
+      {
+        id: 'positions',
+        label: 'GET /recruitment/positions',
+        method: 'GET',
+        path: '/recruitment/positions',
+        description: 'Managers can review open recruitment positions.',
+        requiresManager: true
+      },
+      {
+        id: 'candidates',
+        label: 'GET /recruitment/candidates',
+        method: 'GET',
+        path: '/recruitment/candidates',
+        description: 'Managers can browse submitted candidates.',
+        requiresManager: true
+      },
+      {
+        id: 'custom',
+        label: 'Custom request',
+        method: 'GET',
+        path: '/api/me',
+        description: 'Manually configure the method, path, and body to explore any endpoint.',
+        custom: true
+      }
+    ];
+
+    function methodSupportsBody(method) {
+      const normalized = (method || 'GET').toUpperCase();
+      return !['GET', 'HEAD'].includes(normalized);
+    }
+
+    function buildEndpointNote(def) {
+      if (!def) return '';
+      const details = [`<strong>${def.method} ${def.path}</strong>`];
+      if (def.description) {
+        details.push(def.description);
+      }
+      if (def.requiresManager) {
+        details.push('<em>Manager role required</em>');
+      }
+      if (def.sampleBody && !def.custom) {
+        details.push('Sample payload pre-filled below.');
+      }
+      return details.join(' ');
+    }
+
+    function updateRequestBodyPlaceholder() {
+      const method = (requestMethod.value || 'GET').toUpperCase();
+      if (methodSupportsBody(method)) {
+        requestBodyField.placeholder = 'Provide a JSON payload for POST/PUT requests';
+      } else {
+        requestBodyField.placeholder = 'GET requests typically do not include a body';
+      }
+    }
+
+    function applyEndpoint(def) {
+      if (!def) return;
+      state.selectedEndpointId = def.id;
+      endpointDetails.innerHTML = buildEndpointNote(def);
+      if (def.custom) {
+        state.lastAppliedSample = '';
+        updateRequestBodyPlaceholder();
+        updateCurlCommand();
+        return;
+      }
+      requestMethod.value = def.method || 'GET';
+      requestEndpoint.value = def.path || '/';
+      updateRequestBodyPlaceholder();
+      if (def.sampleBody) {
+        const sample = typeof def.sampleBody === 'string'
+          ? def.sampleBody
+          : JSON.stringify(def.sampleBody, null, 2);
+        requestBodyField.value = sample;
+        state.lastAppliedSample = sample.trim();
+      } else {
+        requestBodyField.value = '';
+        state.lastAppliedSample = '';
+      }
+      updateCurlCommand();
+    }
+
+    function populateEndpointOptions() {
+      endpointPicker.innerHTML = '';
+      endpointDefinitions.forEach(def => {
+        const option = document.createElement('option');
+        option.value = def.id;
+        option.textContent = `${def.label}${def.requiresManager ? ' (manager)' : ''}`;
+        endpointPicker.appendChild(option);
+      });
+      const initial = endpointDefinitions[0];
+      endpointPicker.value = initial.id;
+      applyEndpoint(initial);
+    }
 
     function resetStatus(el) {
       if (!el) return;
@@ -297,9 +528,21 @@
         curlCommand.textContent = 'Authenticate to generate a curl command.';
         return;
       }
-      const endpoint = meEndpoint.value || '/api/me';
+      const method = (requestMethod.value || 'GET').toUpperCase();
+      const endpoint = requestEndpoint.value.trim() || '/api/me';
       const url = new URL(endpoint, state.baseUrl).toString();
-      const command = `curl -X GET "${url}" -H "Authorization: Bearer ${state.token}"`;
+      let command = `curl -X ${method} "${url}" -H "Authorization: Bearer ${state.token}"`;
+      const bodyText = requestBodyField.value.trim();
+      if (methodSupportsBody(method) && bodyText) {
+        let jsonString = bodyText;
+        try {
+          jsonString = JSON.stringify(JSON.parse(bodyText));
+        } catch (err) {
+          // Leave the body as-is; the submit handler will prevent invalid JSON from being sent.
+        }
+        const escaped = jsonString.replace(/'/g, "'\\''");
+        command += ` -H "Content-Type: application/json" -d '${escaped}'`;
+      }
       curlCommand.textContent = command;
     }
 
@@ -324,6 +567,9 @@
     }
 
     baseUrlInput.value = state.baseUrl;
+
+    populateEndpointOptions();
+    updateRequestBodyPlaceholder();
 
     baseUrlInput.addEventListener('change', () => {
       state.baseUrl = getBaseUrl();
@@ -367,6 +613,25 @@
       }
     });
 
+    endpointPicker.addEventListener('change', (event) => {
+      const def = endpointDefinitions.find(item => item.id === event.target.value);
+      applyEndpoint(def);
+    });
+
+    requestMethod.addEventListener('change', () => {
+      updateRequestBodyPlaceholder();
+      updateCurlCommand();
+    });
+
+    requestEndpoint.addEventListener('input', updateCurlCommand);
+
+    requestBodyField.addEventListener('input', () => {
+      if (requestBodyField.value.trim() !== (state.lastAppliedSample || '')) {
+        state.lastAppliedSample = '';
+      }
+      updateCurlCommand();
+    });
+
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       resetStatus(loginStatus);
@@ -404,43 +669,61 @@
       }
     });
 
-    meForm.addEventListener('submit', async (event) => {
+    requestForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      resetStatus(meStatus);
-      meSubmitBtn.disabled = true;
-      setStatus(meStatus, 'Sending request…');
-      const endpoint = meEndpoint.value.trim() || '/api/me';
+      resetStatus(requestStatus);
+      requestSubmitBtn.disabled = true;
+      setStatus(requestStatus, 'Sending request…');
+      const endpoint = requestEndpoint.value.trim() || '/api/me';
+      const method = (requestMethod.value || 'GET').toUpperCase();
       const baseUrl = getBaseUrl();
       const url = new URL(endpoint, baseUrl);
       const headers = new Headers();
       if (state.token) {
         headers.set('Authorization', `Bearer ${state.token}`);
       }
+      const methodAllowsBody = methodSupportsBody(method);
+      const bodyText = requestBodyField.value.trim();
+      let requestBody;
+      if (methodAllowsBody && bodyText) {
+        try {
+          JSON.parse(bodyText);
+          headers.set('Content-Type', 'application/json');
+          requestBody = bodyText;
+        } catch (err) {
+          setStatus(requestStatus, 'Body must be valid JSON.', 'error');
+          requestOutput.textContent = 'Invalid JSON body – request not sent.';
+          requestSubmitBtn.disabled = false;
+          return;
+        }
+      }
       try {
-        const response = await fetch(url.toString(), { headers });
+        const response = await fetch(url.toString(), {
+          method,
+          headers,
+          body: methodAllowsBody && bodyText ? requestBody : undefined
+        });
         const text = await response.text();
         let parsed;
         try {
           parsed = JSON.parse(text);
         } catch (err) {
-          parsed = text;
+          parsed = text || '';
         }
-        meOutput.textContent = prettify(parsed);
+        requestOutput.textContent = prettify(parsed);
         if (!response.ok) {
-          setStatus(meStatus, `Request failed (${response.status})`, 'error');
+          setStatus(requestStatus, `Request failed (${response.status})`, 'error');
         } else {
-          setStatus(meStatus, 'Request succeeded', 'success');
+          setStatus(requestStatus, 'Request succeeded', 'success');
         }
       } catch (err) {
-        meOutput.textContent = String(err);
-        setStatus(meStatus, 'Network error – check the server', 'error');
+        requestOutput.textContent = String(err);
+        setStatus(requestStatus, 'Network error – check the server', 'error');
       } finally {
-        meSubmitBtn.disabled = false;
+        requestSubmitBtn.disabled = false;
         updateCurlCommand();
       }
     });
-
-    meEndpoint.addEventListener('input', updateCurlCommand);
   </script>
 </body>
 </html>
