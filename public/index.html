@@ -69,34 +69,58 @@
     </header>
 
     <nav class="tab-bar">
-      <button id="tabProfile" class="tab-button hidden">
-        <span class="material-symbols-rounded">account_circle</span>
-        <span>My Profile</span>
-      </button>
-      <button id="tabPortal" class="tab-button active-tab">
-        <span class="material-symbols-rounded">event_available</span>
-        <span>Leave Portal</span>
-      </button>
-      <button id="tabManage" class="tab-button">
-        <span class="material-symbols-rounded">group</span>
-        <span>Employee Management</span>
-      </button>
-      <button id="tabRecruitment" class="tab-button hidden">
-        <span class="material-symbols-rounded">work_history</span>
-        <span>Recruitment</span>
-      </button>
-      <button id="tabManagerApps" class="tab-button hidden">
-        <span class="material-symbols-rounded">inbox</span>
-        <span>Leave Applications</span>
-      </button>
-      <button id="tabLeaveReport" class="tab-button hidden">
-        <span class="material-symbols-rounded">insights</span>
-        <span>Leave Report</span>
-      </button>
-      <button id="tabSettings" class="tab-button hidden">
-        <span class="material-symbols-rounded">settings</span>
-        <span>Settings</span>
-      </button>
+      <div class="tab-section tab-section--primary">
+        <button id="tabProfile" class="tab-button hidden">
+          <span class="material-symbols-rounded">account_circle</span>
+          <span>My Profile</span>
+        </button>
+        <button id="tabPortal" class="tab-button active-tab">
+          <span class="material-symbols-rounded">event_available</span>
+          <span>Leave Portal</span>
+        </button>
+      </div>
+
+      <div class="tab-section tab-section--groups">
+        <div class="tab-group" data-tab-group>
+          <button type="button" class="tab-group-toggle" data-tab-group-toggle aria-expanded="false">
+            <span class="material-symbols-rounded">handshake</span>
+            <span class="tab-group-label">Team Operations</span>
+            <span class="material-symbols-rounded tab-group-caret">expand_more</span>
+          </button>
+          <div class="tab-group-menu" data-tab-group-menu>
+            <button id="tabManage" class="tab-button">
+              <span class="material-symbols-rounded">group</span>
+              <span>Employee Management</span>
+            </button>
+            <button id="tabRecruitment" class="tab-button hidden">
+              <span class="material-symbols-rounded">work_history</span>
+              <span>Recruitment</span>
+            </button>
+            <button id="tabManagerApps" class="tab-button hidden">
+              <span class="material-symbols-rounded">inbox</span>
+              <span>Leave Applications</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="tab-group" data-tab-group>
+          <button type="button" class="tab-group-toggle" data-tab-group-toggle aria-expanded="false">
+            <span class="material-symbols-rounded">insights</span>
+            <span class="tab-group-label">Insights &amp; Admin</span>
+            <span class="material-symbols-rounded tab-group-caret">expand_more</span>
+          </button>
+          <div class="tab-group-menu" data-tab-group-menu>
+            <button id="tabLeaveReport" class="tab-button hidden">
+              <span class="material-symbols-rounded">monitoring</span>
+              <span>Leave Report</span>
+            </button>
+            <button id="tabSettings" class="tab-button hidden">
+              <span class="material-symbols-rounded">settings</span>
+              <span>Settings</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </nav>
 
     <main class="content-area">
