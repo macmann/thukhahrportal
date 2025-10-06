@@ -30,15 +30,31 @@ const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
   .map(origin => origin.trim())
   .filter(Boolean);
 
+function isOriginAllowed(origin, origins) {
+  if (!origins.length || origins.includes('*')) {
+    return true;
+  }
+
+  return origins.some(allowed => {
+    if (!allowed) return false;
+
+    if (allowed.startsWith('*.')) {
+      const domain = allowed.slice(1);
+      return origin.endsWith(domain);
+    }
+
+    return allowed === origin;
+  });
+}
+
 const corsOptions = {
-  origin: allowedOrigins.length
-    ? allowedOrigins
-    : (origin, callback) => {
-        if (!origin) {
-          return callback(null, true);
-        }
-        return callback(new Error('Origin not allowed'));
-      },
+  origin(origin, callback) {
+    if (!origin || isOriginAllowed(origin, allowedOrigins)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Origin not allowed'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
