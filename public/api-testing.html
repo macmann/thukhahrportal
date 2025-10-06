@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Brillar API Testing Sandbox</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+  <link rel="stylesheet" href="material-theme.css">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body.api-test {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      background: #f6f8fb;
+      color: #1f2933;
+    }
+    .api-test__header {
+      background: linear-gradient(135deg, #2d6cdf, #7b5cff);
+      color: #fff;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(37, 56, 88, 0.2);
+    }
+    .api-test__header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 2rem;
+      font-weight: 600;
+    }
+    .api-test__header p {
+      margin: 0 auto;
+      max-width: 640px;
+      line-height: 1.5;
+    }
+    .api-test__content {
+      max-width: 960px;
+      margin: -2.5rem auto 3rem;
+      padding: 0 1rem;
+    }
+    .api-test__card {
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .api-test__card h2 {
+      margin-top: 0;
+      font-size: 1.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .api-test__card h2 span.material-symbols-rounded {
+      font-size: 1.6rem;
+    }
+    .api-test__description {
+      margin-top: 0.25rem;
+      color: #52616b;
+      line-height: 1.6;
+    }
+    .api-test__form {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .api-test__form .md-field {
+      margin: 0;
+    }
+    .api-test__stack {
+      display: grid;
+      gap: 1rem;
+    }
+    .api-test__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    pre.api-test__pre {
+      background: #0f172a;
+      color: #e3f2fd;
+      padding: 1rem;
+      border-radius: 12px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      max-height: 240px;
+    }
+    code.api-test__code-inline {
+      background: rgba(45, 108, 223, 0.12);
+      padding: 0.1rem 0.25rem;
+      border-radius: 6px;
+      font-size: 0.9em;
+    }
+    .api-test__status {
+      font-weight: 500;
+    }
+    .api-test__status--success {
+      color: #147d64;
+    }
+    .api-test__status--error {
+      color: #c81e1e;
+    }
+    .api-test__footer {
+      text-align: center;
+      color: #6b7280;
+      padding: 2rem 1rem 3rem;
+      font-size: 0.9rem;
+    }
+    textarea.api-test__token {
+      width: 100%;
+      min-height: 70px;
+      padding: 0.75rem;
+      border-radius: 12px;
+      border: 1px solid #d2d6dc;
+      font-family: 'Roboto Mono', monospace;
+      font-size: 0.95rem;
+      resize: vertical;
+    }
+    .api-test__grid {
+      display: grid;
+      gap: 1.5rem;
+    }
+    @media (min-width: 720px) {
+      .api-test__two-column {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body class="api-test">
+  <header class="api-test__header">
+    <h1>Brillar API Testing Sandbox</h1>
+    <p>Validate authentication and protected endpoints without leaving your browser. Use this page to mint a token, call
+      <code class="api-test__code-inline">/api/me</code>, and share ready-to-run <code class="api-test__code-inline">curl</code> commands with embedded teams.</p>
+  </header>
+
+  <main class="api-test__content">
+    <section class="api-test__card">
+      <h2><span class="material-symbols-rounded">public</span>Environment setup</h2>
+      <p class="api-test__description">Confirm where your API is running. By default the portal is served from
+        <code class="api-test__code-inline">http://localhost:3000</code> when launched locally.</p>
+      <div class="api-test__form">
+        <div class="md-field">
+          <label class="md-label" for="baseUrl">API base URL</label>
+          <div class="md-input-wrapper">
+            <span class="material-symbols-rounded">link</span>
+            <input class="md-input" id="baseUrl" type="url" required placeholder="http://localhost:3000">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="api-test__card">
+      <h2><span class="material-symbols-rounded">login</span>Authenticate</h2>
+      <p class="api-test__description">Use a valid email/password pair (for example the seeded
+        <code class="api-test__code-inline">admin@brillar.io</code> account) to call <code class="api-test__code-inline">POST /login</code>.</p>
+      <form id="apiTestLoginForm" class="api-test__form">
+        <div class="api-test__two-column">
+          <div class="md-field">
+            <label class="md-label" for="loginEmail">Email</label>
+            <div class="md-input-wrapper">
+              <span class="material-symbols-rounded">mail</span>
+              <input class="md-input" id="loginEmail" type="email" required placeholder="admin@brillar.io">
+            </div>
+          </div>
+          <div class="md-field">
+            <label class="md-label" for="loginPassword">Password</label>
+            <div class="md-input-wrapper">
+              <span class="material-symbols-rounded">lock</span>
+              <input class="md-input" id="loginPassword" type="password" required placeholder="admin">
+            </div>
+          </div>
+        </div>
+        <div class="api-test__actions">
+          <button type="submit" class="md-button md-button--filled" id="loginSubmitBtn">
+            <span class="material-symbols-rounded">play_arrow</span>
+            Send login request
+          </button>
+          <span id="loginStatus" class="api-test__status"></span>
+        </div>
+      </form>
+      <pre class="api-test__pre" id="loginOutput" aria-live="polite">Awaiting login request…</pre>
+    </section>
+
+    <section class="api-test__card">
+      <h2><span class="material-symbols-rounded">key</span>Bearer token</h2>
+      <p class="api-test__description">The sandbox stores the most recent token from the login response. You can also paste a
+        token manually to test other accounts.</p>
+      <div class="api-test__grid">
+        <textarea id="tokenField" class="api-test__token" placeholder="Authenticate above or paste an existing token"></textarea>
+        <div class="api-test__actions">
+          <button type="button" class="md-button md-button--outlined md-button--small" id="copyTokenBtn">
+            <span class="material-symbols-rounded">content_copy</span>
+            Copy token
+          </button>
+          <span id="tokenStatus" class="api-test__status"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="api-test__card">
+      <h2><span class="material-symbols-rounded">manage_accounts</span>Call protected routes</h2>
+      <p class="api-test__description">Send requests with the token injected into an <code class="api-test__code-inline">Authorization: Bearer &lt;token&gt;</code> header. Start with <code class="api-test__code-inline">GET /api/me</code>.</p>
+      <form id="meForm" class="api-test__form">
+        <div class="md-field">
+          <label class="md-label" for="meEndpoint">Endpoint path</label>
+          <div class="md-input-wrapper">
+            <span class="material-symbols-rounded">share</span>
+            <input class="md-input" id="meEndpoint" type="text" required value="/api/me">
+          </div>
+        </div>
+        <div class="api-test__actions">
+          <button type="submit" class="md-button md-button--filled" id="meSubmitBtn">
+            <span class="material-symbols-rounded">play_arrow</span>
+            Send request
+          </button>
+          <span id="meStatus" class="api-test__status"></span>
+        </div>
+      </form>
+      <pre class="api-test__pre" id="meOutput" aria-live="polite">Awaiting request…</pre>
+    </section>
+
+    <section class="api-test__card">
+      <h2><span class="material-symbols-rounded">code</span>Shareable curl command</h2>
+      <p class="api-test__description">Hand this to anyone integrating with the widget. It includes the current token so the command mirrors the request above.</p>
+      <div class="api-test__grid">
+        <pre class="api-test__pre" id="curlCommand">Authenticate to generate a curl command.</pre>
+        <div class="api-test__actions">
+          <button type="button" class="md-button md-button--outlined md-button--small" id="copyCurlBtn">
+            <span class="material-symbols-rounded">content_copy</span>
+            Copy curl command
+          </button>
+          <span id="curlStatus" class="api-test__status"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="api-test__footer">
+    Tip: the sandbox never stores credentials. Refresh the page to clear the session and remove the token.
+  </footer>
+
+  <script>
+    const state = {
+      token: '',
+      baseUrl: window.location.origin
+    };
+
+    const baseUrlInput = document.getElementById('baseUrl');
+    const loginForm = document.getElementById('apiTestLoginForm');
+    const loginOutput = document.getElementById('loginOutput');
+    const loginStatus = document.getElementById('loginStatus');
+    const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+    const tokenField = document.getElementById('tokenField');
+    const tokenStatus = document.getElementById('tokenStatus');
+    const copyTokenBtn = document.getElementById('copyTokenBtn');
+    const meForm = document.getElementById('meForm');
+    const meOutput = document.getElementById('meOutput');
+    const meStatus = document.getElementById('meStatus');
+    const meSubmitBtn = document.getElementById('meSubmitBtn');
+    const meEndpoint = document.getElementById('meEndpoint');
+    const curlCommand = document.getElementById('curlCommand');
+    const copyCurlBtn = document.getElementById('copyCurlBtn');
+    const curlStatus = document.getElementById('curlStatus');
+
+    function resetStatus(el) {
+      if (!el) return;
+      el.textContent = '';
+      el.classList.remove('api-test__status--success', 'api-test__status--error');
+    }
+
+    function setStatus(el, message, type = 'info') {
+      if (!el) return;
+      el.textContent = message;
+      el.classList.remove('api-test__status--success', 'api-test__status--error');
+      if (type === 'success') el.classList.add('api-test__status--success');
+      if (type === 'error') el.classList.add('api-test__status--error');
+    }
+
+    function setToken(token) {
+      state.token = token || '';
+      tokenField.value = state.token;
+      if (state.token) {
+        setStatus(tokenStatus, 'Token ready for use', 'success');
+      } else {
+        setStatus(tokenStatus, 'Token cleared');
+      }
+      updateCurlCommand();
+    }
+
+    function updateCurlCommand() {
+      if (!state.token) {
+        curlCommand.textContent = 'Authenticate to generate a curl command.';
+        return;
+      }
+      const endpoint = meEndpoint.value || '/api/me';
+      const url = new URL(endpoint, state.baseUrl).toString();
+      const command = `curl -X GET "${url}" -H "Authorization: Bearer ${state.token}"`;
+      curlCommand.textContent = command;
+    }
+
+    function getBaseUrl() {
+      try {
+        const value = baseUrlInput.value.trim();
+        if (!value) return state.baseUrl;
+        const url = new URL(value);
+        return url.origin;
+      } catch (err) {
+        return state.baseUrl;
+      }
+    }
+
+    function prettify(data) {
+      if (typeof data === 'string') return data;
+      try {
+        return JSON.stringify(data, null, 2);
+      } catch (err) {
+        return String(data);
+      }
+    }
+
+    baseUrlInput.value = state.baseUrl;
+
+    baseUrlInput.addEventListener('change', () => {
+      state.baseUrl = getBaseUrl();
+      updateCurlCommand();
+    });
+
+    tokenField.addEventListener('input', () => {
+      state.token = tokenField.value.trim();
+      updateCurlCommand();
+      if (state.token) {
+        setStatus(tokenStatus, 'Using manually supplied token', 'success');
+      } else {
+        resetStatus(tokenStatus);
+      }
+    });
+
+    copyTokenBtn.addEventListener('click', async () => {
+      if (!state.token) {
+        setStatus(tokenStatus, 'No token to copy', 'error');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(state.token);
+        setStatus(tokenStatus, 'Token copied to clipboard', 'success');
+      } catch (err) {
+        setStatus(tokenStatus, 'Clipboard copy failed. Copy manually instead.', 'error');
+      }
+    });
+
+    copyCurlBtn.addEventListener('click', async () => {
+      const command = curlCommand.textContent.trim();
+      if (!command || command.startsWith('Authenticate')) {
+        setStatus(curlStatus, 'Generate a command first', 'error');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(command);
+        setStatus(curlStatus, 'curl command copied', 'success');
+      } catch (err) {
+        setStatus(curlStatus, 'Clipboard copy failed. Copy manually instead.', 'error');
+      }
+    });
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      resetStatus(loginStatus);
+      loginSubmitBtn.disabled = true;
+      setStatus(loginStatus, 'Sending request…');
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const baseUrl = getBaseUrl();
+      try {
+        const response = await fetch(`${baseUrl}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const payload = await response.json().catch(() => ({}));
+        loginOutput.textContent = prettify(payload);
+        if (!response.ok) {
+          setStatus(loginStatus, `Request failed (${response.status})`, 'error');
+          setToken('');
+        } else if (payload && payload.token) {
+          setToken(payload.token);
+          state.baseUrl = baseUrl;
+          baseUrlInput.value = baseUrl;
+          setStatus(loginStatus, 'Authenticated successfully', 'success');
+        } else {
+          setToken('');
+          setStatus(loginStatus, 'Login succeeded but token missing', 'error');
+        }
+      } catch (err) {
+        loginOutput.textContent = String(err);
+        setStatus(loginStatus, 'Network error – check the server', 'error');
+        setToken('');
+      } finally {
+        loginSubmitBtn.disabled = false;
+      }
+    });
+
+    meForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      resetStatus(meStatus);
+      meSubmitBtn.disabled = true;
+      setStatus(meStatus, 'Sending request…');
+      const endpoint = meEndpoint.value.trim() || '/api/me';
+      const baseUrl = getBaseUrl();
+      const url = new URL(endpoint, baseUrl);
+      const headers = new Headers();
+      if (state.token) {
+        headers.set('Authorization', `Bearer ${state.token}`);
+      }
+      try {
+        const response = await fetch(url.toString(), { headers });
+        const text = await response.text();
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (err) {
+          parsed = text;
+        }
+        meOutput.textContent = prettify(parsed);
+        if (!response.ok) {
+          setStatus(meStatus, `Request failed (${response.status})`, 'error');
+        } else {
+          setStatus(meStatus, 'Request succeeded', 'success');
+        }
+      } catch (err) {
+        meOutput.textContent = String(err);
+        setStatus(meStatus, 'Network error – check the server', 'error');
+      } finally {
+        meSubmitBtn.disabled = false;
+        updateCurlCommand();
+      }
+    });
+
+    meEndpoint.addEventListener('input', updateCurlCommand);
+  </script>
+</body>
+</html>
