@@ -139,6 +139,133 @@ function ensureLeaveBalances(emp) {
   return updated;
 }
 
+const PROFILE_SECTIONS = [
+  {
+    id: 'personal',
+    title: 'Personal Information',
+    keywords: ['personal', 'dob', 'date of birth', 'birth', 'birthday', 'nationality', 'citizen', 'address', 'city', 'state', 'country', 'postal', 'zip', 'marital', 'gender'],
+    editable: true
+  },
+  {
+    id: 'contact',
+    title: 'Contact Information',
+    keywords: ['contact', 'phone', 'mobile', 'whatsapp', 'telegram', 'skype', 'linkedin', 'email'],
+    editable: true
+  },
+  {
+    id: 'emergency',
+    title: 'Emergency Contacts',
+    keywords: ['emergency', 'next of kin', 'next-of-kin', 'kin', 'guardian'],
+    editable: true
+  },
+  {
+    id: 'employment',
+    title: 'Employment History & Position',
+    keywords: ['start', 'end', 'tenure', 'history', 'promotion', 'internship', 'probation', 'experience', 'full time', 'contract'],
+    editable: false
+  },
+  {
+    id: 'department',
+    title: 'Department & Role Assignment',
+    keywords: ['department', 'project', 'role', 'title', 'manager', 'supervisor', 'appraiser', 'reporting', 'team', 'current', 'position', 'status'],
+    editable: false
+  }
+];
+
+const PROFILE_EDITABLE_KEYWORDS = {
+  personal: ['dob', 'date of birth', 'birth', 'birthday', 'nationality', 'citizen', 'address', 'city', 'state', 'country', 'postal', 'zip', 'marital', 'gender'],
+  contact: ['contact', 'phone', 'mobile', 'whatsapp', 'telegram', 'skype', 'linkedin'],
+  emergency: ['emergency', 'kin', 'guardian']
+};
+
+const PROFILE_EXCLUDED_KEYS = new Set(['id', '_id', 'leaveBalances']);
+
+function normalizeProfileKey(key) {
+  return typeof key === 'string' ? key.trim().toLowerCase() : '';
+}
+
+function formatProfileLabel(key) {
+  if (!key) return 'Field';
+  return String(key)
+    .replace(/[_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/(^|\s)([a-z])/g, (_, space, char) => space + char.toUpperCase());
+}
+
+function determineProfileInputType(normalizedKey) {
+  if (!normalizedKey) return 'text';
+  if (normalizedKey.includes('address') || normalizedKey.includes('remarks')) return 'textarea';
+  if (normalizedKey.includes('date')) return 'date';
+  if (normalizedKey.includes('phone') || normalizedKey.includes('mobile') || normalizedKey.includes('contact')) return 'tel';
+  return 'text';
+}
+
+function findValueByKeywords(employee, keywords = []) {
+  if (!employee || typeof employee !== 'object') return '';
+  const lowerKeywords = keywords.map(word => word.toLowerCase());
+  return Object.entries(employee).reduce((acc, [key, value]) => {
+    if (acc) return acc;
+    const normalized = normalizeProfileKey(key);
+    if (lowerKeywords.some(keyword => normalized.includes(keyword))) {
+      if (value !== undefined && value !== null && value !== '') {
+        return typeof value === 'string' ? value : String(value);
+      }
+    }
+    return acc;
+  }, '');
+}
+
+function buildEmployeeProfile(employee) {
+  const sectionMap = new Map(
+    PROFILE_SECTIONS.map(section => [section.id, { id: section.id, title: section.title, editable: section.editable, fields: [] }])
+  );
+
+  Object.entries(employee || {}).forEach(([key, value]) => {
+    if (PROFILE_EXCLUDED_KEYS.has(key)) return;
+    const normalizedKey = normalizeProfileKey(key);
+    const sectionDef = PROFILE_SECTIONS.find(section =>
+      section.keywords.some(keyword => normalizedKey.includes(keyword))
+    ) || PROFILE_SECTIONS[0];
+    const section = sectionMap.get(sectionDef.id);
+    if (!section) return;
+    const editableKeywords = PROFILE_EDITABLE_KEYWORDS[sectionDef.id] || [];
+    const editable = sectionDef.editable && editableKeywords.some(keyword => normalizedKey.includes(keyword));
+    const fieldValue = value === null || typeof value === 'undefined' ? '' : value;
+    const inputType = determineProfileInputType(normalizedKey);
+    section.fields.push({
+      key,
+      label: formatProfileLabel(key),
+      value: typeof fieldValue === 'string' ? fieldValue : String(fieldValue),
+      editable,
+      type: inputType
+    });
+  });
+
+  const sections = Array.from(sectionMap.values())
+    .filter(section => section.fields.length > 0)
+    .map(section => ({ id: section.id, title: section.title, fields: section.fields }));
+
+  return {
+    employeeId: employee?.id || null,
+    name: employee?.name || '',
+    email: getEmpEmail(employee),
+    leaveBalances:
+      employee?.leaveBalances && typeof employee.leaveBalances === 'object'
+        ? employee.leaveBalances
+        : { ...DEFAULT_LEAVE_BALANCES },
+    summary: {
+      title: findValueByKeywords(employee, ['title', 'position']),
+      department: findValueByKeywords(employee, ['department', 'project']),
+      manager: findValueByKeywords(employee, ['appraiser', 'manager', 'supervisor', 'reporting']),
+      status:
+        typeof employee?.status === 'string' && employee.status
+          ? employee.status
+          : findValueByKeywords(employee, ['status'])
+    },
+    sections
+  };
+}
+
 function upsertUserForEmployee(emp) {
   if (!emp) return false;
   normalizeEmployeeEmail(emp);
@@ -384,6 +511,92 @@ init().then(async () => {
     user.password = newPassword;
     await db.write();
     res.json({ success: true });
+  });
+
+  // ========== MY PROFILE ==========
+  app.get('/api/my-profile', authRequired, async (req, res) => {
+    if (!req.user.employeeId) {
+      return res.status(404).json({ error: 'Employee profile not linked to this account.' });
+    }
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+    const employee = db.data.employees.find(emp => emp.id == req.user.employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee profile not found.' });
+    }
+    const balancesUpdated = ensureLeaveBalances(employee);
+    if (balancesUpdated) {
+      await db.write();
+    }
+    res.json(buildEmployeeProfile(employee));
+  });
+
+  app.put('/api/my-profile', authRequired, async (req, res) => {
+    if (!req.user.employeeId) {
+      return res.status(404).json({ error: 'Employee profile not linked to this account.' });
+    }
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+    const employee = db.data.employees.find(emp => emp.id == req.user.employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee profile not found.' });
+    }
+
+    const payload = req.body && typeof req.body === 'object' ? req.body : {};
+    const updates = payload.updates && typeof payload.updates === 'object'
+      ? payload.updates
+      : payload;
+
+    const profileView = buildEmployeeProfile(employee);
+    const editableKeys = new Set();
+    profileView.sections.forEach(section => {
+      section.fields.forEach(field => {
+        if (field.editable) editableKeys.add(field.key);
+      });
+    });
+
+    let applied = 0;
+    let changed = false;
+    Object.entries(updates || {}).forEach(([key, value]) => {
+      if (!editableKeys.has(key)) return;
+      applied += 1;
+      const normalizedValue = value === null || typeof value === 'undefined'
+        ? ''
+        : typeof value === 'string'
+          ? value.trim()
+          : String(value);
+      const currentValue = employee[key];
+      const normalizedCurrent = currentValue === null || typeof currentValue === 'undefined'
+        ? ''
+        : typeof currentValue === 'string'
+          ? currentValue
+          : String(currentValue);
+      if (normalizedCurrent !== normalizedValue) {
+        employee[key] = normalizedValue;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await db.write();
+    }
+
+    const response = buildEmployeeProfile(employee);
+    if (applied === 0) {
+      response.message = 'No editable fields were updated.';
+      response.messageType = 'info';
+    } else if (!changed) {
+      response.message = 'No changes detected.';
+      response.messageType = 'info';
+    } else {
+      response.message = 'Profile updated successfully.';
+      response.messageType = 'success';
+    }
+    res.json(response);
   });
 
   // ========== EMPLOYEES ==========
