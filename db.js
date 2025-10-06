@@ -14,6 +14,13 @@ async function init() {
   }
 }
 
+function getDatabase() {
+  if (!database) {
+    throw new Error('Database connection has not been initialized');
+  }
+  return database;
+}
+
 const db = {
   data: null,
   async read() {
@@ -56,4 +63,4 @@ const db = {
   }
 };
 
-module.exports = { db, init };
+module.exports = { db, init, getDatabase };
