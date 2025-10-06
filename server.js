@@ -4,10 +4,52 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
 const nodemailer = require('nodemailer');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const jwt = require('jsonwebtoken');
 const { db, init } = require('./db');
 const { parse } = require('csv-parse/sync');
 
 const app = express();
+
+const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'session_token';
+const SESSION_COOKIE_MAX_AGE = Number(
+  process.env.SESSION_COOKIE_MAX_AGE || 7 * 24 * 60 * 60 * 1000
+);
+const SESSION_COOKIE_SAMESITE = (process.env.SESSION_COOKIE_SAMESITE || 'lax').toLowerCase();
+const rawAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+const ALLOWED_ORIGINS = rawAllowedOrigins;
+const ALLOW_ALL_ORIGINS = ALLOWED_ORIGINS.length === 0;
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+    if (ALLOW_ALL_ORIGINS || ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+const corsMiddleware = cors(corsOptions);
+
+app.use((req, res, next) => {
+  corsMiddleware(req, res, err => {
+    if (err) {
+      return res.status(403).json({ error: 'CORS not allowed for this origin.' });
+    }
+    next();
+  });
+});
+app.options('*', corsMiddleware);
 
 // Default leave balance values assigned to new employees
 const DEFAULT_LEAVE_BALANCES = { annual: 10, casual: 5, medical: 14 };
@@ -309,6 +351,8 @@ function upsertUserForEmployee(emp) {
 }
 
 const SESSION_TOKENS = {}; // token: userId
+const WIDGET_JWT_SECRET = process.env.WIDGET_JWT_SECRET || process.env.JWT_SECRET || 'brillar-widget-secret';
+const WIDGET_JWT_EXPIRES_IN = Number(process.env.WIDGET_JWT_EXPIRES_IN || 300);
 
 function genToken() {
   return Math.random().toString(36).slice(2) + Date.now();
@@ -343,13 +387,18 @@ function generateCommentId() {
 
 app.use(bodyParser.json({ limit: BODY_LIMIT }));
 app.use(bodyParser.urlencoded({ limit: BODY_LIMIT, extended: true }));
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---- AUTH ----
-async function authRequired(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
+function resolveToken(req) {
+  const headerToken = req.headers.authorization?.split(' ')[1];
+  const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
+  return headerToken || cookieToken || null;
+}
+
+async function resolveUserFromSession(token) {
   if (!token || !SESSION_TOKENS[token]) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return null;
   }
   const userId = SESSION_TOKENS[token];
   await db.read();
@@ -357,13 +406,60 @@ async function authRequired(req, res, next) {
   if (!user && userId === 'admin') {
     user = { id: 'admin', email: ADMIN_EMAIL, role: 'manager', employeeId: null };
   }
-  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!user) {
+    delete SESSION_TOKENS[token];
+    return null;
+  }
+  return user;
+}
+
+function setSessionCookie(res, token) {
+  const secure = process.env.NODE_ENV === 'production';
+  const sameSite = ['lax', 'strict', 'none'].includes(SESSION_COOKIE_SAMESITE)
+    ? SESSION_COOKIE_SAMESITE
+    : 'lax';
+  const cookieOptions = {
+    httpOnly: true,
+    secure: sameSite === 'none' ? true : secure,
+    sameSite,
+    maxAge: Number.isFinite(SESSION_COOKIE_MAX_AGE) && SESSION_COOKIE_MAX_AGE > 0
+      ? SESSION_COOKIE_MAX_AGE
+      : undefined
+  };
+  res.cookie(SESSION_COOKIE_NAME, token, cookieOptions);
+}
+
+function clearSessionCookie(res) {
+  const secure = process.env.NODE_ENV === 'production';
+  const sameSite = ['lax', 'strict', 'none'].includes(SESSION_COOKIE_SAMESITE)
+    ? SESSION_COOKIE_SAMESITE
+    : 'lax';
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    secure: sameSite === 'none' ? true : secure,
+    sameSite
+  });
+}
+
+// ---- AUTH ----
+async function authRequired(req, res, next) {
+  const token = resolveToken(req);
+  const user = await resolveUserFromSession(token);
+  if (!token || !user) {
+    if (req.cookies?.[SESSION_COOKIE_NAME]) {
+      clearSessionCookie(res);
+    }
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   if (user.role !== 'manager') {
     const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
     const emp = employees.find(e => e.id == user.employeeId);
     const status = (emp?.status || '').toString().toLowerCase();
     if (!emp || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
       delete SESSION_TOKENS[token];
+      if (req.cookies?.[SESSION_COOKIE_NAME]) {
+        clearSessionCookie(res);
+      }
       return res.status(403).json({ error: 'Employee account is inactive' });
     }
   }
@@ -451,6 +547,7 @@ init().then(async () => {
       }
       const token = genToken();
       SESSION_TOKENS[token] = userObj.id;
+      setSessionCookie(res, token);
       const redirect = `/?token=${token}&user=${encodeURIComponent(JSON.stringify(userObj))}`;
       res.redirect(redirect);
     } catch (err) {
@@ -493,7 +590,45 @@ init().then(async () => {
 
     const token = genToken();
     SESSION_TOKENS[token] = userObj.id;
+    setSessionCookie(res, token);
     res.json({ token, user: userObj });
+  });
+
+  app.get('/api/widget/token', async (req, res) => {
+    const sessionToken = req.cookies?.[SESSION_COOKIE_NAME];
+    if (!sessionToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const user = await resolveUserFromSession(sessionToken);
+    if (!user) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    if (user.role !== 'manager') {
+      const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
+      const emp = employees.find(e => e.id == user.employeeId);
+      const status = (emp?.status || '').toString().toLowerCase();
+      if (!emp || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
+        delete SESSION_TOKENS[sessionToken];
+        clearSessionCookie(res);
+        return res.status(403).json({ error: 'Employee account is inactive' });
+      }
+    }
+
+    const expiresIn = Number.isFinite(WIDGET_JWT_EXPIRES_IN) && WIDGET_JWT_EXPIRES_IN > 0
+      ? WIDGET_JWT_EXPIRES_IN
+      : 300;
+    const payload = {
+      sub: user.id,
+      role: user.role,
+      email: user.email,
+      employeeId: user.employeeId ?? null,
+      aud: 'brillar-widget',
+      iss: 'brillar-hr-portal'
+    };
+    const token = jwt.sign(payload, WIDGET_JWT_SECRET, { expiresIn });
+    res.set('Cache-Control', 'no-store');
+    res.json({ token, expires_in: expiresIn });
   });
 
   // ========== CHANGE PASSWORD ==========
