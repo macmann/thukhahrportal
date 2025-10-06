@@ -49,7 +49,7 @@ app.use((req, res, next) => {
     next();
   });
 });
-app.options('*', corsMiddleware);
+app.options(/.*/, corsMiddleware);
 
 // Default leave balance values assigned to new employees
 const DEFAULT_LEAVE_BALANCES = { annual: 10, casual: 5, medical: 14 };
