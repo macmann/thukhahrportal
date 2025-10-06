@@ -1,5 +1,6 @@
 // server.js
 
+const crypto = require('crypto');
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
@@ -9,6 +10,13 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const { db, init } = require('./db');
 const { parse } = require('csv-parse/sync');
+const {
+  ensureIndexes: ensurePairingIndexes,
+  createPairingRequest,
+  leasePendingRequest,
+  claimRequest: claimPairingRequest,
+  getRequestById: getPairRequestById
+} = require('./pairingStore');
 
 const app = express();
 
@@ -17,39 +25,28 @@ const SESSION_COOKIE_MAX_AGE = Number(
   process.env.SESSION_COOKIE_MAX_AGE || 7 * 24 * 60 * 60 * 1000
 );
 const SESSION_COOKIE_SAMESITE = (process.env.SESSION_COOKIE_SAMESITE || 'lax').toLowerCase();
-const rawAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
   .split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
-const ALLOWED_ORIGINS = rawAllowedOrigins;
-const ALLOW_ALL_ORIGINS = ALLOWED_ORIGINS.length === 0;
 
 const corsOptions = {
-  origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
-    if (ALLOW_ALL_ORIGINS || ALLOWED_ORIGINS.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error('Not allowed by CORS'));
-  },
+  origin: allowedOrigins.length
+    ? allowedOrigins
+    : (origin, callback) => {
+        if (!origin) {
+          return callback(null, true);
+        }
+        return callback(new Error('Origin not allowed'));
+      },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length']
 };
 
-const corsMiddleware = cors(corsOptions);
-
-app.use((req, res, next) => {
-  corsMiddleware(req, res, err => {
-    if (err) {
-      return res.status(403).json({ error: 'CORS not allowed for this origin.' });
-    }
-    next();
-  });
-});
-app.options(/.*/, corsMiddleware);
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Default leave balance values assigned to new employees
 const DEFAULT_LEAVE_BALANCES = { annual: 10, casual: 5, medical: 14 };
@@ -60,6 +57,49 @@ const BODY_LIMIT = process.env.BODY_LIMIT || '3mb';
 // Default admin credentials (can be overridden with env vars)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@brillar.io';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+
+// ---- PAIRING CONFIG ----
+const PAIR_REQUEST_TTL_MIN_SECONDS = Math.max(
+  60,
+  Number(process.env.PAIR_REQUEST_TTL_MIN_SECONDS || 60)
+);
+const PAIR_REQUEST_TTL_MAX_SECONDS = Math.max(
+  PAIR_REQUEST_TTL_MIN_SECONDS,
+  Number(process.env.PAIR_REQUEST_TTL_MAX_SECONDS || 120)
+);
+const PAIR_POLL_LEASE_SECONDS = Math.max(
+  5,
+  Number(process.env.PAIR_POLL_LEASE_SECONDS || 20)
+);
+const PAIR_AGENT_ID = process.env.PAIR_AGENT_ID || 'default-agent';
+const PAIR_AGENT_SECRET = process.env.PAIR_AGENT_SECRET || '';
+const PAIR_AGENT_SIGNATURE_TOLERANCE_MS = Number(
+  process.env.PAIR_AGENT_SIGNATURE_TOLERANCE_MS || 2 * 60 * 1000
+);
+const PAIR_AGENT_REPLAY_WINDOW_MS = Number(
+  process.env.PAIR_AGENT_REPLAY_WINDOW_MS || 5 * 60 * 1000
+);
+const PAIR_TOKEN_SCOPE = process.env.PAIR_TOKEN_SCOPE || 'pair:connect';
+const PAIR_TOKEN_ISSUER = process.env.PAIR_TOKEN_ISSUER || 'brillar-hr-portal';
+const PAIR_TOKEN_AUDIENCE = process.env.PAIR_TOKEN_AUDIENCE || 'agent-clients';
+const PAIR_TOKEN_SECRET = process.env.PAIR_TOKEN_SECRET || '';
+const PAIR_TOKEN_TTL_SECONDS = Math.max(
+  60,
+  Number(process.env.PAIR_TOKEN_TTL_SECONDS || 5 * 60)
+);
+const PAIR_TOKEN_ALGORITHM = process.env.PAIR_TOKEN_ALGORITHM || 'HS256';
+const PAIR_INIT_RATE_LIMIT = Number(process.env.PAIR_INIT_RATE_LIMIT || 10);
+const PAIR_INIT_RATE_WINDOW_MS = Number(
+  process.env.PAIR_INIT_RATE_WINDOW_MS || 60 * 1000
+);
+const PAIR_POLL_RATE_LIMIT = Number(process.env.PAIR_POLL_RATE_LIMIT || 30);
+const PAIR_POLL_RATE_WINDOW_MS = Number(
+  process.env.PAIR_POLL_RATE_WINDOW_MS || 60 * 1000
+);
+const PAIR_CLAIM_RATE_LIMIT = Number(process.env.PAIR_CLAIM_RATE_LIMIT || 60);
+const PAIR_CLAIM_RATE_WINDOW_MS = Number(
+  process.env.PAIR_CLAIM_RATE_WINDOW_MS || 60 * 1000
+);
 
 // ---- MICROSOFT SSO CONFIG ----
 const MS_CLIENT_ID = process.env.MS_CLIENT_ID || '';
@@ -366,6 +406,129 @@ const CANDIDATE_STATUSES = [
   'Hired'
 ];
 
+function computePairRequestTtlSeconds() {
+  const span = PAIR_REQUEST_TTL_MAX_SECONDS - PAIR_REQUEST_TTL_MIN_SECONDS;
+  if (span <= 0) {
+    return PAIR_REQUEST_TTL_MIN_SECONDS;
+  }
+  return (
+    PAIR_REQUEST_TTL_MIN_SECONDS + Math.floor(Math.random() * (span + 1))
+  );
+}
+
+function generatePairRequestId() {
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().replace(/-/g, '');
+  }
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function pruneExpiredEntries(map, now, windowMs) {
+  for (const [key, entry] of map.entries()) {
+    if (now - entry.windowStart >= windowMs) {
+      map.delete(key);
+    }
+  }
+}
+
+function checkRateLimit(map, key, limit, windowMs) {
+  if (!limit || limit <= 0) return true;
+  const now = Date.now();
+  const existing = map.get(key);
+  if (!existing || now - existing.windowStart >= windowMs) {
+    map.set(key, { count: 1, windowStart: now });
+    pruneExpiredEntries(map, now, windowMs * 5);
+    return true;
+  }
+  if (existing.count < limit) {
+    existing.count += 1;
+    return true;
+  }
+  return false;
+}
+
+const initRateLimiter = new Map();
+const pollRateLimiter = new Map();
+const claimRateLimiter = new Map();
+
+const agentSignatureCache = new Map();
+
+function verifyAgentRequest(req) {
+  if (!PAIR_AGENT_SECRET) {
+    return {
+      ok: false,
+      status: 503,
+      error: 'Agent authentication is not configured'
+    };
+  }
+
+  const signatureHeader = (req.get('x-agent-signature') || '').trim().toLowerCase();
+  const timestampHeader = (req.get('x-agent-timestamp') || '').trim();
+  const agentIdHeader = (req.get('x-agent-id') || PAIR_AGENT_ID).trim();
+
+  if (!signatureHeader || !timestampHeader) {
+    return { ok: false, status: 401, error: 'Missing agent authentication headers' };
+  }
+
+  if (!/^[a-f0-9]+$/.test(signatureHeader)) {
+    return { ok: false, status: 401, error: 'Invalid agent signature format' };
+  }
+
+  const timestamp = Number(timestampHeader);
+  if (!Number.isFinite(timestamp)) {
+    return { ok: false, status: 401, error: 'Invalid agent timestamp' };
+  }
+
+  const nowMs = Date.now();
+  if (Math.abs(nowMs - timestamp) > PAIR_AGENT_SIGNATURE_TOLERANCE_MS) {
+    return { ok: false, status: 401, error: 'Agent signature timestamp out of range' };
+  }
+
+  const rawBody = typeof req.rawBody === 'string' ? req.rawBody : '';
+  const baseString = `${agentIdHeader}:${timestamp}:${rawBody}`;
+  const expectedSignature = crypto
+    .createHmac('sha256', PAIR_AGENT_SECRET)
+    .update(baseString)
+    .digest('hex');
+
+  const providedBuffer = Buffer.from(signatureHeader, 'hex');
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+  if (
+    providedBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+  ) {
+    return { ok: false, status: 401, error: 'Agent signature mismatch' };
+  }
+
+  for (const [cacheKey, seenAt] of agentSignatureCache.entries()) {
+    if (nowMs - seenAt > PAIR_AGENT_REPLAY_WINDOW_MS) {
+      agentSignatureCache.delete(cacheKey);
+    }
+  }
+
+  const replayKey = `${agentIdHeader}:${timestamp}:${expectedSignature}`;
+  if (agentSignatureCache.has(replayKey)) {
+    return { ok: false, status: 401, error: 'Replay detected' };
+  }
+
+  agentSignatureCache.set(replayKey, nowMs);
+
+  return { ok: true, agentId: agentIdHeader, timestamp };
+}
+
+function requireAgentAuth(req, res, next) {
+  const verification = verifyAgentRequest(req);
+  if (!verification.ok) {
+    const status = verification.status || 401;
+    return res.status(status).json({ error: verification.error || 'Unauthorized' });
+  }
+  req.agentAuth = {
+    agentId: verification.agentId,
+    timestamp: verification.timestamp
+  };
+  next();
+}
+
 function sanitizeComment(comment, currentUser) {
   if (!comment) return null;
   return {
@@ -385,8 +548,18 @@ function generateCommentId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-app.use(bodyParser.json({ limit: BODY_LIMIT }));
-app.use(bodyParser.urlencoded({ limit: BODY_LIMIT, extended: true }));
+const rawBodySaver = (req, res, buf) => {
+  req.rawBody = buf && buf.length ? buf.toString('utf8') : '';
+};
+
+app.use(bodyParser.json({ limit: BODY_LIMIT, verify: rawBodySaver }));
+app.use(bodyParser.urlencoded({ limit: BODY_LIMIT, extended: true, verify: rawBodySaver }));
+app.use((req, res, next) => {
+  if (typeof req.rawBody !== 'string') {
+    req.rawBody = '';
+  }
+  next();
+});
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -494,6 +667,7 @@ async function ensureUsersForExistingEmployees() {
 
 init().then(async () => {
   await ensureUsersForExistingEmployees();
+  await ensurePairingIndexes();
   // ========== MICROSOFT SSO ==========
   const oauthStates = new Set();
 
@@ -555,6 +729,227 @@ init().then(async () => {
       res.status(500).send('Authentication failed');
     }
   });
+
+  // ========== PAIRING ENDPOINTS ==========
+  app.post('/pair/init', authRequired, async (req, res) => {
+    const { client_id: rawClientId, tab_id: rawTabId } = req.body || {};
+    const clientId = typeof rawClientId === 'string' ? rawClientId.trim() : '';
+    if (!clientId) {
+      return res.status(400).json({ error: 'client_id is required' });
+    }
+
+    const tabId =
+      rawTabId === undefined || rawTabId === null
+        ? null
+        : String(rawTabId).trim() || null;
+
+    const rateKey = `${req.user.id}:${clientId}`;
+    if (
+      !checkRateLimit(
+        initRateLimiter,
+        rateKey,
+        PAIR_INIT_RATE_LIMIT,
+        PAIR_INIT_RATE_WINDOW_MS
+      )
+    ) {
+      return res.status(429).json({ error: 'Too many pairing attempts' });
+    }
+
+    const ttlSeconds = computePairRequestTtlSeconds();
+
+    let created;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const requestId = generatePairRequestId();
+      try {
+        created = await createPairingRequest({
+          requestId,
+          userId: req.user.id,
+          clientId,
+          tabId,
+          scope: PAIR_TOKEN_SCOPE,
+          ttlSeconds
+        });
+        break;
+      } catch (err) {
+        if (err && err.code === 11000) {
+          continue;
+        }
+        console.error('Failed to create pairing request', err);
+        return res.status(500).json({ error: 'Failed to create pairing request' });
+      }
+    }
+
+    if (!created) {
+      return res.status(500).json({ error: 'Failed to create pairing request' });
+    }
+
+    res.status(201).json({
+      request_id: created.requestId,
+      client_id: created.clientId,
+      tab_id: created.tabId,
+      scope: created.scope,
+      ttl_seconds: created.ttlSeconds,
+      expires_at: created.expiresAt.toISOString()
+    });
+  });
+
+  app.post('/pair/poll', requireAgentAuth, async (req, res) => {
+    const { client_id: rawClientId, client_instance_id: rawInstanceId } = req.body || {};
+    const clientId = typeof rawClientId === 'string' ? rawClientId.trim() : '';
+    if (!clientId) {
+      return res.status(400).json({ error: 'client_id is required' });
+    }
+
+    const clientInstanceId =
+      rawInstanceId === undefined || rawInstanceId === null
+        ? null
+        : String(rawInstanceId).trim() || null;
+
+    const rateKey = `${clientId}:${clientInstanceId || 'default'}`;
+    if (
+      !checkRateLimit(
+        pollRateLimiter,
+        rateKey,
+        PAIR_POLL_RATE_LIMIT,
+        PAIR_POLL_RATE_WINDOW_MS
+      )
+    ) {
+      return res.status(429).json({ error: 'Polling rate limit exceeded' });
+    }
+
+    try {
+      const leased = await leasePendingRequest({
+        clientId,
+        agentId: req.agentAuth.agentId,
+        clientInstanceId,
+        leaseDurationMs: PAIR_POLL_LEASE_SECONDS * 1000
+      });
+
+      if (!leased) {
+        return res.status(204).end();
+      }
+
+      return res.json({
+        request_id: leased.requestId,
+        claim_token: leased.claimToken,
+        user_id: leased.userId,
+        client_id: leased.clientId,
+        tab_id: leased.tabId,
+        scope: leased.scope,
+        expires_at: leased.expiresAt.toISOString(),
+        lease_expires_at: leased.leaseExpiresAt.toISOString()
+      });
+    } catch (err) {
+      console.error('Failed to poll pairing requests', err);
+      return res.status(500).json({ error: 'Failed to poll pairing requests' });
+    }
+  });
+
+  app.post('/pair/claim', requireAgentAuth, async (req, res) => {
+    const {
+      request_id: rawRequestId,
+      claim_token: rawClaimToken,
+      client_instance_id: rawInstanceId
+    } = req.body || {};
+
+    const requestId = typeof rawRequestId === 'string' ? rawRequestId.trim() : '';
+    const claimToken =
+      typeof rawClaimToken === 'string' ? rawClaimToken.trim().toLowerCase() : '';
+
+    if (!requestId) {
+      return res.status(400).json({ error: 'request_id is required' });
+    }
+    if (!claimToken) {
+      return res.status(400).json({ error: 'claim_token is required' });
+    }
+
+    const clientInstanceId =
+      rawInstanceId === undefined || rawInstanceId === null
+        ? null
+        : String(rawInstanceId).trim() || null;
+
+    const rateKey = `${req.agentAuth.agentId}:${requestId}`;
+    if (
+      !checkRateLimit(
+        claimRateLimiter,
+        rateKey,
+        PAIR_CLAIM_RATE_LIMIT,
+        PAIR_CLAIM_RATE_WINDOW_MS
+      )
+    ) {
+      return res.status(429).json({ error: 'Claim rate limit exceeded' });
+    }
+
+    try {
+      const claimed = await claimPairingRequest({
+        requestId,
+        claimToken,
+        agentId: req.agentAuth.agentId,
+        clientInstanceId
+      });
+
+      if (!claimed) {
+        const existing = await getPairRequestById(requestId);
+        if (!existing) {
+          return res.status(404).json({ error: 'Pairing request not found' });
+        }
+        const expiration =
+          existing.expiresAt instanceof Date
+            ? existing.expiresAt
+            : existing.expiresAt
+              ? new Date(existing.expiresAt)
+              : null;
+        if (!expiration || expiration <= new Date()) {
+          return res.status(410).json({ error: 'Pairing request expired' });
+        }
+        if (existing.status === 'claimed') {
+          return res.status(410).json({ error: 'Pairing request already claimed' });
+        }
+        return res.status(410).json({ error: 'Pairing request lease expired' });
+      }
+
+      if (!PAIR_TOKEN_SECRET) {
+        return res.status(503).json({ error: 'Pairing token signer not configured' });
+      }
+
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const expiresAtSeconds = nowSeconds + PAIR_TOKEN_TTL_SECONDS;
+      const scope = claimed.scope || PAIR_TOKEN_SCOPE;
+      const payload = {
+        sub: String(claimed.userId),
+        user_id: claimed.userId,
+        aud: PAIR_TOKEN_AUDIENCE,
+        iss: PAIR_TOKEN_ISSUER,
+        jti: generatePairRequestId(),
+        scope,
+        iat: nowSeconds,
+        exp: expiresAtSeconds
+      };
+
+      const token = jwt.sign(payload, PAIR_TOKEN_SECRET, {
+        algorithm: PAIR_TOKEN_ALGORITHM
+      });
+
+      return res.json({
+        token,
+        token_type: 'Bearer',
+        scope,
+        expires_at: new Date(expiresAtSeconds * 1000).toISOString(),
+        request: {
+          request_id: claimed.requestId,
+          client_id: claimed.clientId,
+          tab_id: claimed.tabId
+        },
+        user: {
+          id: claimed.userId
+        }
+      });
+    } catch (err) {
+      console.error('Failed to claim pairing request', err);
+      return res.status(500).json({ error: 'Failed to claim pairing request' });
+    }
+  });
+
   // ========== LOGIN ==========
   app.post('/login', async (req, res) => {
     await db.read();
