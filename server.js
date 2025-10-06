@@ -46,7 +46,11 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.options(
+  '/:path(*)',
+  cors(corsOptions),
+  (req, res) => res.sendStatus(204)
+);
 
 // Default leave balance values assigned to new employees
 const DEFAULT_LEAVE_BALANCES = { annual: 10, casual: 5, medical: 14 };
