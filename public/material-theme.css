@@ -143,6 +143,33 @@ body {
   color: var(--md-sys-color-primary);
 }
 
+.md-field--readonly .md-label {
+  color: #1e293b;
+}
+
+.md-input-wrapper--readonly {
+  background: rgba(241, 245, 249, 0.95);
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: none;
+}
+
+.md-field--readonly .md-input {
+  font-weight: 500;
+  cursor: default;
+}
+
+.md-field--readonly .md-input:disabled {
+  color: #0f172a;
+  -webkit-text-fill-color: #0f172a;
+  opacity: 1;
+}
+
+.md-field--readonly .md-input--empty:disabled {
+  color: #94a3b8;
+  -webkit-text-fill-color: #94a3b8;
+  font-style: italic;
+}
+
 .md-input,
 .md-select,
 .md-textarea {
