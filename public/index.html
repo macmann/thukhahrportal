@@ -69,6 +69,10 @@
     </header>
 
     <nav class="tab-bar">
+      <button id="tabProfile" class="tab-button hidden">
+        <span class="material-symbols-rounded">account_circle</span>
+        <span>My Profile</span>
+      </button>
       <button id="tabPortal" class="tab-button active-tab">
         <span class="material-symbols-rounded">event_available</span>
         <span>Leave Portal</span>
@@ -96,6 +100,94 @@
     </nav>
 
     <main class="content-area">
+      <!-- Employee Profile Panel -->
+      <section id="profilePanel" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="material-symbols-rounded">account_circle</span>
+            My Profile
+          </h2>
+          <p class="panel-subtitle">Review your personal information, update contact details, and keep emergency information accurate.</p>
+        </div>
+
+        <div class="card-grid profile-summary-grid">
+          <div class="md-card">
+            <div class="card-title">
+              <span class="material-symbols-rounded">badge</span>
+              Profile Overview
+            </div>
+            <dl class="profile-summary-list">
+              <div class="profile-summary-item">
+                <dt>Name</dt>
+                <dd id="profileSummaryName">-</dd>
+              </div>
+              <div class="profile-summary-item">
+                <dt>Work Email</dt>
+                <dd id="profileSummaryEmail">-</dd>
+              </div>
+              <div class="profile-summary-item">
+                <dt>Title</dt>
+                <dd id="profileSummaryTitle">-</dd>
+              </div>
+              <div class="profile-summary-item">
+                <dt>Department</dt>
+                <dd id="profileSummaryDepartment">-</dd>
+              </div>
+              <div class="profile-summary-item">
+                <dt>Reporting Manager</dt>
+                <dd id="profileSummaryManager">-</dd>
+              </div>
+              <div class="profile-summary-item">
+                <dt>Status</dt>
+                <dd id="profileSummaryStatus">-</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="md-card">
+            <div class="card-title">
+              <span class="material-symbols-rounded">account_balance_wallet</span>
+              Leave Balances
+            </div>
+            <div id="profileLeaveBalances" class="balance-chips profile-balance-chips">
+              <div class="balance-chip chip-annual">
+                <span class="material-symbols-rounded">beach_access</span>
+                <div>
+                  <span class="label">Annual</span>
+                  <strong id="profileBalAnnual">-</strong><span class="unit">days</span>
+                </div>
+              </div>
+              <div class="balance-chip chip-casual">
+                <span class="material-symbols-rounded">sunny</span>
+                <div>
+                  <span class="label">Casual</span>
+                  <strong id="profileBalCasual">-</strong><span class="unit">days</span>
+                </div>
+              </div>
+              <div class="balance-chip chip-medical">
+                <span class="material-symbols-rounded">medical_information</span>
+                <div>
+                  <span class="label">Medical</span>
+                  <strong id="profileBalMedical">-</strong><span class="unit">days</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="profileGlobalFeedback" class="profile-feedback hidden"></div>
+
+        <div id="profileSections" class="profile-section-grid">
+          <div class="md-card">
+            <div class="card-title">
+              <span class="material-symbols-rounded">info</span>
+              Profile Details
+            </div>
+            <p class="text-muted" style="font-style: italic;">Loading profile information...</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Leave Portal Panel -->
       <section id="portalPanel" class="panel">
         <div class="panel-header">

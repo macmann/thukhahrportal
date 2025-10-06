@@ -20,6 +20,8 @@ let recruitmentActiveDetailsCandidateId = null;
 let currentDrawerFields = [];
 let hireModalState = { candidateId: null, select: null, previousStatus: null, candidate: null };
 let currentHireFields = [];
+let profileData = null;
+let profileLoading = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
@@ -91,6 +93,7 @@ function logout() {
   document.getElementById('logoutBtn').classList.add('hidden');
   document.getElementById('changePassBtn').classList.add('hidden');
   document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('tabProfile').classList.add('hidden');
   document.getElementById('tabManage').classList.add('hidden');
   document.getElementById('tabManagerApps').classList.add('hidden');
   location.reload();
@@ -98,6 +101,14 @@ function logout() {
 window.logout = logout;
 
 const API = window.location.origin;
+
+const PROFILE_SECTION_ICONS = {
+  personal: 'person',
+  contact: 'call',
+  emergency: 'medical_services',
+  employment: 'work_history',
+  department: 'corporate_fare'
+};
 
 function apiFetch(path, options = {}) {
   const token = localStorage.getItem('brillar_token');
@@ -119,12 +130,14 @@ function escapeHtml(str) {
 
 // Tab switching logic
 function showPanel(name) {
+  const profileBtn = document.getElementById('tabProfile');
   const portalBtn   = document.getElementById('tabPortal');
   const manageBtn   = document.getElementById('tabManage');
   const recruitmentBtn = document.getElementById('tabRecruitment');
   const managerBtn  = document.getElementById('tabManagerApps');
   const reportBtn   = document.getElementById('tabLeaveReport');
   const settingsBtn = document.getElementById('tabSettings');
+  const profilePanel = document.getElementById('profilePanel');
   const portalPanel = document.getElementById('portalPanel');
   const managePanel = document.getElementById('managePanel');
   const recruitmentPanel = document.getElementById('recruitmentPanel');
@@ -132,8 +145,9 @@ function showPanel(name) {
   const reportPanel  = document.getElementById('leaveReportPanel');
   const settingsPanel = document.getElementById('settingsPanel');
 
-  [portalBtn, manageBtn, recruitmentBtn, managerBtn, reportBtn, settingsBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
+  [profileBtn, portalBtn, manageBtn, recruitmentBtn, managerBtn, reportBtn, settingsBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
 
+  if (profilePanel) profilePanel.classList.add('hidden');
   portalPanel.classList.add('hidden');
   managePanel.classList.add('hidden');
   recruitmentPanel.classList.add('hidden');
@@ -141,6 +155,11 @@ function showPanel(name) {
   reportPanel.classList.add('hidden');
   settingsPanel.classList.add('hidden');
 
+  if (name === 'profile') {
+    if (profilePanel) profilePanel.classList.remove('hidden');
+    if (profileBtn) profileBtn.classList.add('active-tab');
+    loadMyProfile();
+  }
   if (name === 'portal') {
     portalPanel.classList.remove('hidden');
     portalBtn.classList.add('active-tab');
@@ -185,6 +204,8 @@ function showPanel(name) {
 
 // Role-based tab display
 function toggleTabsByRole() {
+  const profileTab = document.getElementById('tabProfile');
+  if (profileTab) profileTab.classList.remove('hidden');
   if (currentUser && currentUser.role === 'manager') {
     document.getElementById('tabManage').classList.remove('hidden');
     document.getElementById('tabRecruitment').classList.remove('hidden');
@@ -197,6 +218,273 @@ function toggleTabsByRole() {
     document.getElementById('tabManagerApps').classList.add('hidden');
     document.getElementById('tabLeaveReport').classList.add('hidden');
     document.getElementById('tabSettings').classList.add('hidden');
+  }
+}
+
+function setProfileSummaryField(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const text = value && String(value).trim() ? String(value).trim() : '-';
+  el.textContent = text;
+  if (text === '-') {
+    el.classList.add('text-muted');
+  } else {
+    el.classList.remove('text-muted');
+  }
+}
+
+function renderProfileSection(section) {
+  if (!section || !Array.isArray(section.fields) || !section.fields.length) {
+    return '';
+  }
+  const icon = PROFILE_SECTION_ICONS[section.id] || 'info';
+  const title = escapeHtml(section.title || 'Details');
+  const sectionId = escapeHtml(section.id || Math.random().toString(36).slice(2, 8));
+  const hasEditable = section.fields.some(field => field && field.editable);
+  const fieldsMarkup = section.fields.map(field => {
+    if (!field || !field.key) return '';
+    const label = escapeHtml(field.label || field.key);
+    const key = String(field.key);
+    const normalizedKey = key.toLowerCase();
+    const rawValue = field.value === null || typeof field.value === 'undefined' ? '' : field.value;
+    const value = typeof rawValue === 'string' ? rawValue : String(rawValue);
+    if (field.editable) {
+      const inputId = makeDynamicFieldId('profile', key);
+      const requiredAttr = field.required ? 'required' : '';
+      const isTextArea = field.type === 'textarea' || field.input === 'textarea' || normalizedKey.includes('address');
+      if (isTextArea) {
+        return `
+          <div class="md-field">
+            <label class="md-label" for="${escapeHtml(inputId)}">${label}</label>
+            <textarea class="md-textarea" id="${escapeHtml(inputId)}" name="${escapeHtml(key)}" rows="3" data-editable-field ${requiredAttr}>${escapeHtml(value)}</textarea>
+          </div>
+        `;
+      }
+      const inputType = field.type && field.type !== 'textarea' ? escapeHtml(field.type) : 'text';
+      return `
+        <div class="md-field">
+          <label class="md-label" for="${escapeHtml(inputId)}">${label}</label>
+          <div class="md-input-wrapper">
+            <input class="md-input" id="${escapeHtml(inputId)}" name="${escapeHtml(key)}" type="${inputType}" value="${escapeHtml(value)}" data-editable-field ${requiredAttr}>
+          </div>
+        </div>
+      `;
+    }
+    const hasValue = value && value.trim() !== '';
+    const valueClass = hasValue ? 'profile-field__value' : 'profile-field__value profile-field__value--empty';
+    const displayValue = hasValue ? escapeHtml(value) : 'Not provided';
+    return `
+      <div class="profile-field">
+        <span class="profile-field__label">${label}</span>
+        <span class="${valueClass}">${displayValue}</span>
+      </div>
+    `;
+  }).join('');
+  const bodyMarkup = fieldsMarkup || '<p class="text-muted" style="font-style: italic;">No information captured yet.</p>';
+  const headerMarkup = `
+    <div class="card-title">
+      <span class="material-symbols-rounded">${icon}</span>
+      ${title}
+    </div>
+  `;
+  if (hasEditable) {
+    return `
+      <form class="md-card profile-section-form" data-section="${sectionId}">
+        ${headerMarkup}
+        ${bodyMarkup}
+        <div class="profile-form-actions">
+          <button type="submit" class="md-button md-button--filled md-button--small">
+            <span class="material-symbols-rounded">save</span>
+            Save Changes
+          </button>
+        </div>
+        <div class="profile-feedback hidden" data-feedback></div>
+      </form>
+    `;
+  }
+  return `
+    <div class="md-card" data-section="${sectionId}">
+      ${headerMarkup}
+      ${bodyMarkup}
+    </div>
+  `;
+}
+
+function renderMyProfile() {
+  if (!profileData) return;
+  const {
+    name,
+    email,
+    summary = {},
+    leaveBalances = {},
+    sections = [],
+    message = '',
+    messageType = 'success'
+  } = profileData;
+
+  setProfileSummaryField('profileSummaryName', name);
+  setProfileSummaryField('profileSummaryEmail', email);
+  setProfileSummaryField('profileSummaryTitle', summary.title);
+  setProfileSummaryField('profileSummaryDepartment', summary.department);
+  setProfileSummaryField('profileSummaryManager', summary.manager);
+  setProfileSummaryField('profileSummaryStatus', summary.status);
+
+  const annualEl = document.getElementById('profileBalAnnual');
+  if (annualEl) annualEl.textContent = leaveBalances?.annual ?? '-';
+  const casualEl = document.getElementById('profileBalCasual');
+  if (casualEl) casualEl.textContent = leaveBalances?.casual ?? '-';
+  const medicalEl = document.getElementById('profileBalMedical');
+  if (medicalEl) medicalEl.textContent = leaveBalances?.medical ?? '-';
+
+  const container = document.getElementById('profileSections');
+  if (container) {
+    if (!sections.length) {
+      container.innerHTML = `
+        <div class="md-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">info</span>
+            Profile Details
+          </div>
+          <p class="text-muted" style="font-style: italic;">No profile information recorded yet.</p>
+        </div>
+      `;
+    } else {
+      container.innerHTML = sections.map(renderProfileSection).join('');
+      container.querySelectorAll('.profile-section-form').forEach(form => {
+        form.addEventListener('submit', onProfileSectionSubmit);
+      });
+    }
+  }
+
+  const feedback = document.getElementById('profileGlobalFeedback');
+  if (feedback) {
+    if (message) {
+      feedback.textContent = message;
+      feedback.classList.remove('hidden');
+      if (messageType === 'error') {
+        feedback.classList.add('error');
+      } else {
+        feedback.classList.remove('error');
+      }
+    } else {
+      feedback.textContent = '';
+      feedback.classList.add('hidden');
+      feedback.classList.remove('error');
+    }
+  }
+}
+
+async function loadMyProfile({ force = false } = {}) {
+  const container = document.getElementById('profileSections');
+  if (!container) return;
+
+  if (!force && profileData && !profileLoading) {
+    renderMyProfile();
+    return;
+  }
+
+  if (profileLoading && !force) {
+    return profileLoading;
+  }
+
+  container.innerHTML = `
+    <div class="md-card">
+      <div class="card-title">
+        <span class="material-symbols-rounded">info</span>
+        Profile Details
+      </div>
+      <p class="text-muted" style="font-style: italic;">Loading profile information...</p>
+    </div>
+  `;
+
+  const request = (async () => {
+    try {
+      const res = await apiFetch('/api/my-profile');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Unable to load profile information.');
+      }
+      profileData = data;
+      renderMyProfile();
+      return data;
+    } catch (err) {
+      console.error('Failed to load profile information', err);
+      profileData = null;
+      container.innerHTML = `
+        <div class="md-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">error</span>
+            Profile Details
+          </div>
+          <p class="text-muted" style="font-style: italic; color:#b3261e;">${escapeHtml(err.message || 'Unable to load profile information.')}</p>
+        </div>
+      `;
+      const feedback = document.getElementById('profileGlobalFeedback');
+      if (feedback) {
+        feedback.textContent = '';
+        feedback.classList.add('hidden');
+        feedback.classList.remove('error');
+      }
+      return null;
+    } finally {
+      profileLoading = null;
+    }
+  })();
+  profileLoading = request;
+  return request;
+}
+
+async function onProfileSectionSubmit(ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const feedback = form.querySelector('[data-feedback]');
+  if (feedback) {
+    feedback.textContent = '';
+    feedback.classList.add('hidden');
+    feedback.classList.remove('error');
+  }
+
+  const updates = {};
+  form.querySelectorAll('[data-editable-field]').forEach(input => {
+    if (!input.name) return;
+    updates[input.name] = input.value;
+  });
+
+  const updateKeys = Object.keys(updates);
+  if (!updateKeys.length) {
+    if (feedback) {
+      feedback.textContent = 'No editable fields in this section.';
+      feedback.classList.remove('hidden');
+      feedback.classList.add('error');
+    }
+    return;
+  }
+
+  try {
+    if (submitBtn) submitBtn.disabled = true;
+    const res = await apiFetch('/api/my-profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to update profile.');
+    }
+    profileData = data;
+    renderMyProfile();
+  } catch (err) {
+    console.error('Failed to update profile', err);
+    if (feedback) {
+      feedback.textContent = err.message || 'Unable to save changes right now.';
+      feedback.classList.remove('hidden');
+      feedback.classList.add('error');
+    } else {
+      alert(err.message || 'Unable to save changes right now.');
+    }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
@@ -1296,6 +1584,8 @@ async function init() {
   document.getElementById('modalCloseBtn').onclick = closeReasonModal;
   document.getElementById('reasonForm').onsubmit = onReasonSubmit;
 
+  const profileTabBtn = document.getElementById('tabProfile');
+  if (profileTabBtn) profileTabBtn.onclick = () => showPanel('profile');
   document.getElementById('tabPortal').onclick = () => showPanel('portal');
   document.getElementById('tabManage').onclick = () => showPanel('manage');
   const recruitmentTab = document.getElementById('tabRecruitment');
@@ -1306,7 +1596,8 @@ async function init() {
   if (reportTab) reportTab.onclick = () => showPanel('leaveReport');
   const settingsTab = document.getElementById('tabSettings');
   if (settingsTab) settingsTab.onclick = () => showPanel('settings');
-  showPanel('portal');
+  const defaultPanel = currentUser && currentUser.role !== 'manager' ? 'profile' : 'portal';
+  showPanel(defaultPanel);
 
   document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
 
