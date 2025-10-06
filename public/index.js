@@ -7,6 +7,89 @@ let companyHolidays = [];
 let holidaysLoaded = false;
 let holidaysLoading = null;
 
+function setupTabGroupMenus() {
+  const groups = Array.from(document.querySelectorAll('[data-tab-group]'));
+  if (!groups.length) return;
+
+  const closeGroup = (group) => {
+    group.classList.remove('is-open');
+    const toggle = group.querySelector('[data-tab-group-toggle]');
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+  };
+
+  const openGroup = (group) => {
+    group.classList.add('is-open');
+    const toggle = group.querySelector('[data-tab-group-toggle]');
+    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+  };
+
+  const closeAll = (except = null) => {
+    groups.forEach((group) => {
+      if (group !== except) closeGroup(group);
+    });
+  };
+
+  groups.forEach((group) => {
+    const toggle = group.querySelector('[data-tab-group-toggle]');
+    const menu = group.querySelector('[data-tab-group-menu]');
+    if (!toggle || !menu) return;
+
+    toggle.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const isOpen = group.classList.contains('is-open');
+      if (isOpen) {
+        closeGroup(group);
+      } else {
+        closeAll(group);
+        openGroup(group);
+      }
+    });
+
+    menu.addEventListener('click', (ev) => {
+      const button = ev.target.closest('button');
+      if (!button) return;
+      closeAll();
+    });
+  });
+
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest('[data-tab-group]')) {
+      closeAll();
+    }
+  });
+
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      closeAll();
+    }
+  });
+
+  refreshTabGroupVisibility();
+}
+
+function refreshTabGroupVisibility() {
+  document.querySelectorAll('[data-tab-group]').forEach((group) => {
+    const menu = group.querySelector('[data-tab-group-menu]');
+    if (!menu) return;
+    const hasVisibleButton = Array.from(menu.querySelectorAll('button')).some(
+      (btn) => !btn.classList.contains('hidden')
+    );
+    const toggle = group.querySelector('[data-tab-group-toggle]');
+    if (hasVisibleButton) {
+      group.classList.remove('tab-group--hidden');
+      if (toggle) toggle.removeAttribute('disabled');
+    } else {
+      group.classList.remove('is-open');
+      group.classList.add('tab-group--hidden');
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('disabled', '');
+      }
+    }
+  });
+}
+
 const PIPELINE_STATUSES = ['New', 'Selected for Interview', 'Interview Completed', 'Rejected', 'Hired'];
 let recruitmentPositions = [];
 let recruitmentCandidates = [];
@@ -24,6 +107,7 @@ let profileData = null;
 let profileLoading = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+  setupTabGroupMenus();
   const params = new URLSearchParams(window.location.search);
   if (params.get('token')) {
     localStorage.setItem('brillar_token', params.get('token'));
@@ -95,7 +179,11 @@ function logout() {
   document.getElementById('mainApp').classList.add('hidden');
   document.getElementById('tabProfile').classList.add('hidden');
   document.getElementById('tabManage').classList.add('hidden');
+  document.getElementById('tabRecruitment').classList.add('hidden');
   document.getElementById('tabManagerApps').classList.add('hidden');
+  document.getElementById('tabLeaveReport').classList.add('hidden');
+  document.getElementById('tabSettings').classList.add('hidden');
+  refreshTabGroupVisibility();
   location.reload();
 }
 window.logout = logout;
@@ -219,6 +307,7 @@ function toggleTabsByRole() {
     document.getElementById('tabLeaveReport').classList.add('hidden');
     document.getElementById('tabSettings').classList.add('hidden');
   }
+  refreshTabGroupVisibility();
 }
 
 function setProfileSummaryField(id, value) {
