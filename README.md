@@ -1,4 +1,4 @@
-# Brillar HR Portal
+# Thu Kha HR Portal
 
 Brillar HR Portal is an Express + Node.js application that provides employee self-service, leave tracking, and secure host-mediated agent pairing for outbound automation agents.
 
