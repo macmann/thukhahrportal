@@ -598,41 +598,67 @@
           <button type="button" id="candidateDetailsCloseBtn" class="modal-close material-symbols-rounded">close</button>
           <h3 class="modal-title">
             <span class="material-symbols-rounded">person</span>
-            Candidate Details
+            Candidate 365 View
           </h3>
-          <div class="candidate-details-section">
-            <div class="candidate-details-label">Candidate</div>
-            <div id="candidateDetailsName" class="candidate-details-value">-</div>
-          </div>
-          <div class="candidate-details-section">
-            <div class="candidate-details-label">Contact</div>
-            <div id="candidateDetailsContact" class="candidate-details-value">-</div>
-          </div>
-          <div class="candidate-details-section">
-            <div class="candidate-details-label">Status</div>
-            <div id="candidateDetailsStatus" class="candidate-details-value">-</div>
-          </div>
-          <div class="candidate-details-section">
-            <div class="candidate-details-label">Created</div>
-            <div id="candidateDetailsCreated" class="candidate-details-value">-</div>
-          </div>
-          <div class="candidate-details-section">
-            <div class="candidate-details-label">Comments</div>
-            <div id="candidateDetailsComments" class="candidate-details-value">-</div>
-          </div>
-          <div class="candidate-details-section">
-            <div class="candidate-details-label">CV</div>
-            <div id="candidateDetailsCv" class="candidate-details-value">-</div>
-          </div>
-          <div class="candidate-details-actions">
-            <button type="button" id="candidateDetailsDownloadBtn" class="md-button md-button--tonal">
-              <span class="material-symbols-rounded">download</span>
-              Download CV
-            </button>
-            <button type="button" id="candidateDetailsCommentsBtn" class="md-button md-button--outlined">
-              <span class="material-symbols-rounded">forum</span>
-              View Comments
-            </button>
+          <div class="candidate-details-grid">
+            <div class="candidate-details-column candidate-details-column--info">
+              <div class="candidate-details-summary">
+                <div class="candidate-details-section">
+                  <div class="candidate-details-label">Candidate</div>
+                  <div id="candidateDetailsName" class="candidate-details-value">-</div>
+                </div>
+                <div class="candidate-details-section">
+                  <div class="candidate-details-label">Contact</div>
+                  <div id="candidateDetailsContact" class="candidate-details-value">-</div>
+                </div>
+                <div class="candidate-details-section">
+                  <div class="candidate-details-label">Status</div>
+                  <div id="candidateDetailsStatus" class="candidate-details-value">-</div>
+                </div>
+                <div class="candidate-details-section">
+                  <div class="candidate-details-label">Created</div>
+                  <div id="candidateDetailsCreated" class="candidate-details-value">-</div>
+                </div>
+              </div>
+              <div class="candidate-comments-panel">
+                <div class="candidate-comments-header">
+                  <div>
+                    <div class="candidate-comments-title">Team Comments</div>
+                    <div id="candidateDetailsCommentsMeta" class="candidate-comments-meta text-muted">Share feedback with your hiring team.</div>
+                  </div>
+                  <span id="candidateDetailsCommentsCount" class="candidate-comments-count">0</span>
+                </div>
+                <div id="commentsList" class="comments-list text-muted">
+                  <p style="font-style: italic;">Select a candidate to load comments.</p>
+                </div>
+                <form id="commentForm" class="candidate-comments-form">
+                  <label class="md-label" for="commentText">Add a comment</label>
+                  <textarea id="commentText" class="md-textarea" rows="3" placeholder="Share feedback or interview notes" required></textarea>
+                  <button id="commentSubmitBtn" type="submit" class="md-button md-button--filled md-button--small">
+                    <span class="material-symbols-rounded">add_comment</span>
+                    <span class="comment-submit-label">Add Comment</span>
+                  </button>
+                </form>
+              </div>
+            </div>
+            <div class="candidate-details-column candidate-details-column--preview">
+              <div class="candidate-cv-panel">
+                <div class="candidate-cv-header">
+                  <div>
+                    <div class="candidate-cv-title">CV Preview</div>
+                    <div id="candidateDetailsCvFilename" class="candidate-cv-filename text-muted">-</div>
+                  </div>
+                  <button type="button" id="candidateDetailsDownloadBtn" class="md-button md-button--tonal">
+                    <span class="material-symbols-rounded">download</span>
+                    Download CV
+                  </button>
+                </div>
+                <div id="candidateCvPreview" class="candidate-cv-preview">
+                  <div id="candidateCvPreviewMessage" class="cv-preview-message">Select a candidate to view their CV.</div>
+                  <iframe id="candidateCvIframe" class="cv-preview-frame hidden" title="Candidate CV preview" frameborder="0"></iframe>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -657,31 +683,6 @@
               Save &amp; Mark Hired
             </button>
           </div>
-        </div>
-      </div>
-
-      <div id="commentsModal" class="modal-backdrop hidden">
-        <div class="modal-card comments-modal">
-          <button type="button" id="commentsModalCloseBtn" class="modal-close material-symbols-rounded">close</button>
-          <h3 class="modal-title">
-            <span class="material-symbols-rounded">forum</span>
-            Candidate Comments
-          </h3>
-          <div class="comments-modal-header">
-            <div class="comments-modal-label">Candidate</div>
-            <div id="commentsModalCandidateName" class="comments-modal-name">-</div>
-          </div>
-          <div id="commentsList" class="comments-list text-muted">
-            <p style="font-style: italic;">Loading comments...</p>
-          </div>
-          <form id="commentForm" class="form-stack">
-            <label class="md-label" for="commentText">Add a comment</label>
-            <textarea id="commentText" class="md-textarea" rows="3" placeholder="Share feedback or interview notes" required></textarea>
-            <button id="commentSubmitBtn" type="submit" class="md-button md-button--filled md-button--small">
-              <span class="material-symbols-rounded">add_comment</span>
-              <span class="comment-submit-label">Add Comment</span>
-            </button>
-          </form>
         </div>
       </div>
 
