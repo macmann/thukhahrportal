@@ -210,6 +210,50 @@ function getEmpRole(emp) {
   return value === 'manager' ? 'manager' : 'employee';
 }
 
+function normalizeNumberKey(key = '') {
+  if (typeof key !== 'string') return '';
+  return key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+function findEmployeeNumberKey(emp) {
+  if (!emp || typeof emp !== 'object') return null;
+  return Object.keys(emp).find(key => normalizeNumberKey(key) === 'no') || null;
+}
+
+function getNextEmployeeNumber(employees = []) {
+  if (!Array.isArray(employees) || !employees.length) return 1;
+  let max = 0;
+  employees.forEach(emp => {
+    const numberKey = findEmployeeNumberKey(emp);
+    if (!numberKey) return;
+    const raw = emp[numberKey];
+    const value = Number(raw);
+    if (!Number.isNaN(value)) {
+      max = Math.max(max, value);
+    }
+  });
+  return max + 1;
+}
+
+function assignEmployeeNumber(employee, employees = []) {
+  if (!employee || typeof employee !== 'object') return;
+  let preferredKey = null;
+  if (Array.isArray(employees)) {
+    for (const existing of employees) {
+      const key = findEmployeeNumberKey(existing);
+      if (key) {
+        preferredKey = key;
+        break;
+      }
+    }
+  }
+  if (!preferredKey) {
+    preferredKey = findEmployeeNumberKey(employee) || 'No';
+  }
+  const nextNumber = getNextEmployeeNumber(employees);
+  employee[preferredKey] = nextNumber;
+}
+
 function ensureLeaveBalances(emp) {
   if (!emp) return false;
   if (!emp.leaveBalances || typeof emp.leaveBalances !== 'object') {
@@ -1162,8 +1206,14 @@ init().then(async () => {
   app.post('/employees', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const id = Date.now();
-    const payload = req.body;
+    const payload = req.body && typeof req.body === 'object' ? { ...req.body } : {};
+    delete payload._id;
+    if (!Array.isArray(db.data.employees)) {
+      db.data.employees = [];
+    }
     const employee = { id, ...payload };
+    delete employee._id;
+    assignEmployeeNumber(employee, db.data.employees);
     ensureLeaveBalances(employee);
     normalizeEmployeeEmail(employee);
     const email = getEmpEmail(employee);
@@ -1204,6 +1254,7 @@ init().then(async () => {
           },
           ...row
         };
+        delete emp._id;
         ensureLeaveBalances(emp);
         normalizeEmployeeEmail(emp);
         db.data.employees.push(emp);
@@ -1221,7 +1272,9 @@ init().then(async () => {
     await db.read();
     const emp = db.data.employees.find(e => e.id == req.params.id);
     if (!emp) return res.status(404).json({ error: 'Not found' });
-    Object.assign(emp, req.body);
+    const updates = req.body && typeof req.body === 'object' ? { ...req.body } : {};
+    delete updates._id;
+    Object.assign(emp, updates);
     normalizeEmployeeEmail(emp);
     ensureLeaveBalances(emp);
     upsertUserForEmployee(emp);

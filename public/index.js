@@ -2499,6 +2499,9 @@ function buildEmployeePayload(formEl, fields = []) {
   const formData = new FormData(formEl);
   const data = {};
   formData.forEach((value, key) => {
+    if (typeof key === 'string' && key.startsWith('_')) {
+      return;
+    }
     if (typeof value === 'string') {
       data[key] = value.trim();
     } else {
@@ -2567,7 +2570,7 @@ async function getDynamicEmployeeFields() {
   }
   const requiredFields = ['name', 'title', 'country/city'];
   let normalFields = Object.keys(sample)
-    .filter(k=>k!=='id' && k!=='leaveBalances')
+    .filter(k => k !== 'id' && k !== 'leaveBalances' && !(typeof k === 'string' && k.startsWith('_')))
     .map(k=>{
       let isRequired = requiredFields.includes(k.toLowerCase());
       if (['status','Status'].includes(k)) return {key:k,label:'Status',type:'select',options:['active','inactive'],required:isRequired};

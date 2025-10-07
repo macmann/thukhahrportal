@@ -21,6 +21,71 @@ function getDatabase() {
   return database;
 }
 
+async function syncCollection(name, docs = []) {
+  await init();
+  const collection = database.collection(name);
+  const documents = Array.isArray(docs)
+    ? docs.filter(doc => doc && typeof doc === 'object')
+    : [];
+
+  if (!documents.length) {
+    await collection.deleteMany({});
+    return;
+  }
+
+  const docsWithId = [];
+  const docsWithoutId = [];
+
+  documents.forEach(doc => {
+    if (doc && doc._id) {
+      docsWithId.push(doc);
+    } else if (doc) {
+      docsWithoutId.push(doc);
+    }
+  });
+
+  if (docsWithId.length) {
+    const operations = docsWithId.map(doc => ({
+      replaceOne: {
+        filter: { _id: doc._id },
+        replacement: doc,
+        upsert: true
+      }
+    }));
+    if (operations.length) {
+      await collection.bulkWrite(operations, { ordered: true });
+    }
+  }
+
+  if (docsWithoutId.length) {
+    const docsToInsert = docsWithoutId.map(doc => {
+      const copy = { ...doc };
+      delete copy._id;
+      return copy;
+    });
+    if (docsToInsert.length) {
+      const insertResult = await collection.insertMany(docsToInsert);
+      const insertedIds = insertResult.insertedIds || {};
+      docsWithoutId.forEach((doc, idx) => {
+        const insertedId = insertedIds[idx] || insertedIds[String(idx)];
+        if (insertedId) {
+          doc._id = insertedId;
+        }
+      });
+    }
+  }
+
+  const idsToKeep = documents
+    .map(doc => (doc && doc._id ? doc._id : null))
+    .filter(Boolean);
+
+  if (idsToKeep.length) {
+    await collection.deleteMany({ _id: { $nin: idsToKeep } });
+  } else {
+    await collection.deleteMany({});
+  }
+}
+
 const db = {
   data: null,
   async read() {
@@ -37,7 +102,7 @@ const db = {
   },
   async write() {
     if (!this.data) return;
-    await init();
+
     const {
       employees = [],
       applications = [],
@@ -46,20 +111,15 @@ const db = {
       candidates = [],
       holidays = []
     } = this.data;
+
     await Promise.all([
-      database.collection('employees').deleteMany({}),
-      database.collection('applications').deleteMany({}),
-      database.collection('users').deleteMany({}),
-      database.collection('positions').deleteMany({}),
-      database.collection('candidates').deleteMany({}),
-      database.collection('holidays').deleteMany({})
+      syncCollection('employees', employees),
+      syncCollection('applications', applications),
+      syncCollection('users', users),
+      syncCollection('positions', positions),
+      syncCollection('candidates', candidates),
+      syncCollection('holidays', holidays)
     ]);
-    if (employees.length) await database.collection('employees').insertMany(employees);
-    if (applications.length) await database.collection('applications').insertMany(applications);
-    if (users.length) await database.collection('users').insertMany(users);
-    if (positions.length) await database.collection('positions').insertMany(positions);
-    if (candidates.length) await database.collection('candidates').insertMany(candidates);
-    if (holidays.length) await database.collection('holidays').insertMany(holidays);
   }
 };
 
