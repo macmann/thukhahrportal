@@ -16,7 +16,7 @@ const { db, init } = require('./db');
 
   rows.forEach((row, i) => {
     const id = start + i;
-    db.data.employees.push({
+    const employee = {
       id,
       name: row['Name'],
       status: row.Status?.toLowerCase() === 'inactive' ? 'inactive' : 'active',
@@ -26,7 +26,9 @@ const { db, init } = require('./db');
         medical: Number(row['Medical Leave'] ?? 14)
       },
       ...row
-    });
+    };
+    delete employee._id;
+    db.data.employees.push(employee);
     db.data.users.push({
       id,
       email: row['Email'],
