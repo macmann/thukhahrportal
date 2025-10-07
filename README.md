@@ -3,6 +3,7 @@
 Brillar HR Portal is an Express + Node.js application that provides employee self-service, leave tracking, and secure host-mediated agent pairing for outbound automation agents.
 
 ## Table of Contents
+- [Features](#features)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
@@ -17,7 +18,6 @@ Brillar HR Portal is an Express + Node.js application that provides employee sel
   - [Curl Examples](#curl-examples)
   - [Integrating Agentic Polling](#integrating-agentic-polling)
 - [Frontend Snippet](#frontend-snippet)
-- [Additional Features](#additional-features)
 - [Development Scripts](#development-scripts)
 
 ## Prerequisites
@@ -183,11 +183,23 @@ A minimal helper is available at `public/pairing-demo.js`:
 ```
 The script uses `fetch('/pair/init')` with `credentials: 'include'` so cookies created during login are sent automatically. Combine with the secure CORS defaults (`SameSite=lax`, explicit origin allowlist) to mitigate CSRF.
 
-## Additional Features
-- CSV import for employees (`import.js`)
-- MongoDB persistence via `db.js`
-- SMTP notifications for leave applications
-- Optional Microsoft 365 SSO
+## Features
+- **Employee Directory & Profiles**
+  - Import and normalize employee records from CSV uploads with automatic numbering, email cleanup, and leave balance defaults.
+  - Generate dynamic profile sections (personal, contact, emergency, employment, department) with editable fields for self-service updates.
+- **Authentication & Access Control**
+  - Cookie-based sessions with role-aware authorization and session cookie hardening (`SameSite`, max-age, CORS allowlist).
+  - Optional Microsoft 365 SSO handshake that maps directory users to portal accounts while preserving manager privileges.
+- **Leave Management**
+  - Track annual, casual, and medical leave with configurable balances, overlap checks, half-day support, and balance restoration on cancelation.
+  - Manager workflows for approving, rejecting, and exporting leave reports, including CSV calendar snapshots.
+  - Automatic email notifications for employees when leave requests are submitted, approved, rejected, or canceled.
+- **Secure Agent Pairing APIs**
+  - Time-bound pairing requests with randomized TTLs, poll leasing, and audit logs for compliance.
+  - HMAC-authenticated polling/claim endpoints with replay protection, JWT issuance, and configurable rate limits.
+- **Integrations & Widgets**
+  - REST helpers for generating short-lived JWTs that embed the pairing widget in external systems.
+  - SMTP-powered alerts and extensible Postman-ready API documentation via the `/api/docs` schema payloads.
 
 ## Development Scripts
 | Command | Description |
