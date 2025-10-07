@@ -96,10 +96,10 @@ let recruitmentCandidates = [];
 let recruitmentActivePositionId = null;
 let recruitmentInitialized = false;
 let recruitmentActiveCommentCandidateId = null;
-let recruitmentActiveCommentCandidateName = '';
 let recruitmentCandidateComments = [];
 let recruitmentEditingCommentId = null;
 let recruitmentActiveDetailsCandidateId = null;
+const candidateCvPreviewUrls = new Map();
 let currentDrawerFields = [];
 let hireModalState = { candidateId: null, select: null, previousStatus: null, candidate: null };
 let currentHireFields = [];
@@ -839,14 +839,12 @@ async function initRecruitment() {
     candidateTable.addEventListener('click', onCandidateTableClick);
   }
 
-  const commentsCloseBtn = document.getElementById('commentsModalCloseBtn');
-  if (commentsCloseBtn) commentsCloseBtn.onclick = closeCommentsModal;
-
   const commentsList = document.getElementById('commentsList');
   if (commentsList) commentsList.addEventListener('click', onCommentsListClick);
 
   const commentFormEl = document.getElementById('commentForm');
   if (commentFormEl) commentFormEl.addEventListener('submit', onCommentSubmit);
+  setCommentFormEnabled(false);
 
   const detailsCloseBtn = document.getElementById('candidateDetailsCloseBtn');
   if (detailsCloseBtn) detailsCloseBtn.onclick = closeCandidateDetailsModal;
@@ -860,9 +858,6 @@ async function initRecruitment() {
 
   const detailsDownloadBtn = document.getElementById('candidateDetailsDownloadBtn');
   if (detailsDownloadBtn) detailsDownloadBtn.addEventListener('click', onCandidateDetailsDownloadClick);
-
-  const detailsCommentsBtn = document.getElementById('candidateDetailsCommentsBtn');
-  if (detailsCommentsBtn) detailsCommentsBtn.addEventListener('click', onCandidateDetailsCommentsClick);
 
   const hireCloseBtn = document.getElementById('candidateHireCloseBtn');
   if (hireCloseBtn) hireCloseBtn.onclick = closeCandidateHireModal;
@@ -1192,19 +1187,183 @@ async function downloadCandidateCv(id) {
   URL.revokeObjectURL(url);
 }
 
+function resetCandidateCvPreview(message = 'Select a candidate to view their CV.') {
+  const messageEl = document.getElementById('candidateCvPreviewMessage');
+  const iframe = document.getElementById('candidateCvIframe');
+  if (iframe) {
+    iframe.classList.add('hidden');
+    iframe.removeAttribute('src');
+  }
+  if (messageEl) {
+    messageEl.textContent = message;
+    messageEl.classList.remove('hidden');
+  }
+}
+
+function setCandidateCvPreviewUrl(url) {
+  const messageEl = document.getElementById('candidateCvPreviewMessage');
+  const iframe = document.getElementById('candidateCvIframe');
+  if (!iframe || !messageEl) return;
+  iframe.src = url;
+  iframe.classList.remove('hidden');
+  messageEl.classList.add('hidden');
+}
+
+async function loadCandidateCvPreview(candidate) {
+  if (!candidate) {
+    resetCandidateCvPreview();
+    return;
+  }
+  if (!candidate?.cv?.filename) {
+    resetCandidateCvPreview('No CV uploaded for this candidate.');
+    return;
+  }
+  const contentType = String(candidate.cv.contentType || '').toLowerCase();
+  if (!contentType.includes('pdf')) {
+    resetCandidateCvPreview('CV preview is available only for PDF files. Use the download button to open this document.');
+    return;
+  }
+  const messageEl = document.getElementById('candidateCvPreviewMessage');
+  const iframe = document.getElementById('candidateCvIframe');
+  if (!messageEl || !iframe) return;
+  const cachedUrl = candidateCvPreviewUrls.get(candidate.id);
+  if (cachedUrl) {
+    setCandidateCvPreviewUrl(cachedUrl);
+    return;
+  }
+  messageEl.textContent = 'Loading CV preview...';
+  messageEl.classList.remove('hidden');
+  iframe.classList.add('hidden');
+  try {
+    const res = await apiFetch(`/recruitment/candidates/${candidate.id}/cv`);
+    if (!res.ok) throw new Error('Failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    candidateCvPreviewUrls.set(candidate.id, url);
+    if (recruitmentActiveDetailsCandidateId !== candidate.id) return;
+    setCandidateCvPreviewUrl(url);
+  } catch (err) {
+    if (recruitmentActiveDetailsCandidateId !== candidate?.id) return;
+    resetCandidateCvPreview('Unable to load CV preview right now. Use the download button to access the CV.');
+  }
+}
+
+function setCommentFormEnabled(enabled) {
+  const textarea = document.getElementById('commentText');
+  const submitBtn = document.getElementById('commentSubmitBtn');
+  [textarea, submitBtn].forEach(el => {
+    if (el) el.disabled = !enabled;
+  });
+}
+
+function updateCandidateCommentsCount(count, candidate) {
+  const countEl = document.getElementById('candidateDetailsCommentsCount');
+  if (!countEl) return;
+  let value = Number.isFinite(count) ? Number(count) : 0;
+  if (candidate && candidate.id === recruitmentActiveCommentCandidateId && Array.isArray(recruitmentCandidateComments)) {
+    value = recruitmentCandidateComments.length;
+  }
+  countEl.textContent = value;
+}
+
+function prepareCandidateCommentsSection(candidate) {
+  const list = document.getElementById('commentsList');
+  if (list) {
+    list.classList.add('text-muted');
+    list.innerHTML = '<p style="font-style: italic;">Loading comments...</p>';
+  }
+  const metaEl = document.getElementById('candidateDetailsCommentsMeta');
+  if (metaEl) {
+    metaEl.textContent = candidate?.name
+      ? `Collaborate on interview notes for ${candidate.name}.`
+      : 'Share feedback with your hiring team.';
+  }
+  const textarea = document.getElementById('commentText');
+  if (textarea) textarea.value = '';
+  updateCandidateCommentsCount(candidate?.commentCount, candidate);
+  updateCommentSubmitLabel();
+}
+
+async function loadCandidateComments(candidateId) {
+  const list = document.getElementById('commentsList');
+  recruitmentCandidateComments = [];
+  recruitmentEditingCommentId = null;
+  updateCommentSubmitLabel();
+  if (list) {
+    list.classList.add('text-muted');
+    list.innerHTML = '<p style="font-style: italic;">Loading comments...</p>';
+  }
+  try {
+    const res = await apiFetch(`/recruitment/candidates/${candidateId}/comments`);
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    recruitmentCandidateComments = Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (recruitmentActiveCommentCandidateId !== candidateId) return;
+    if (list) {
+      list.innerHTML = '<p style="font-style: italic;">Unable to load comments right now.</p>';
+    }
+    updateCandidateCommentsCount(recruitmentCandidateComments.length);
+    return;
+  }
+  if (recruitmentActiveCommentCandidateId !== candidateId) return;
+  recruitmentCandidateComments.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  const candidate = recruitmentCandidates.find(c => c.id == candidateId);
+  if (candidate) {
+    candidate.commentCount = recruitmentCandidateComments.length;
+  }
+  renderCandidateComments();
+  updateCandidateCommentsCount(recruitmentCandidateComments.length, candidate);
+  refreshCandidateDetailsModal();
+}
+
 function openCandidateDetailsModal(candidateId) {
   const candidate = recruitmentCandidates.find(c => c.id == candidateId);
   if (!candidate) return;
   recruitmentActiveDetailsCandidateId = candidateId;
+  recruitmentActiveCommentCandidateId = candidateId;
+  prepareCandidateCommentsSection(candidate);
+  setCommentFormEnabled(true);
   populateCandidateDetails(candidate);
+  loadCandidateComments(candidateId);
+  loadCandidateCvPreview(candidate);
   const modal = document.getElementById('candidateDetailsModal');
   if (modal) modal.classList.remove('hidden');
+  const textarea = document.getElementById('commentText');
+  if (textarea) textarea.focus();
 }
 
 function closeCandidateDetailsModal() {
   const modal = document.getElementById('candidateDetailsModal');
   if (modal) modal.classList.add('hidden');
   recruitmentActiveDetailsCandidateId = null;
+  recruitmentActiveCommentCandidateId = null;
+  recruitmentCandidateComments = [];
+  recruitmentEditingCommentId = null;
+  updateCommentSubmitLabel();
+  setCommentFormEnabled(false);
+  resetCandidateCvPreview();
+  const list = document.getElementById('commentsList');
+  if (list) {
+    list.classList.add('text-muted');
+    list.innerHTML = '<p style="font-style: italic;">Select a candidate to load comments.</p>';
+  }
+  const metaEl = document.getElementById('candidateDetailsCommentsMeta');
+  if (metaEl) metaEl.textContent = 'Share feedback with your hiring team.';
+  updateCandidateCommentsCount(0);
+  const textarea = document.getElementById('commentText');
+  if (textarea) textarea.value = '';
+  ['Name', 'Contact', 'Status', 'Created'].forEach(field => {
+    const el = document.getElementById(`candidateDetails${field}`);
+    if (el) el.textContent = '-';
+  });
+  const cvEl = document.getElementById('candidateDetailsCvFilename');
+  if (cvEl) cvEl.textContent = '-';
+  const downloadBtn = document.getElementById('candidateDetailsDownloadBtn');
+  if (downloadBtn) {
+    delete downloadBtn.dataset.candidateId;
+    downloadBtn.disabled = true;
+  }
 }
 
 function populateCandidateDetails(candidate) {
@@ -1220,13 +1379,7 @@ function populateCandidateDetails(candidate) {
   const createdEl = document.getElementById('candidateDetailsCreated');
   if (createdEl) createdEl.textContent = formatRecruitmentDateTime(candidate?.createdAt) || '-';
 
-  const commentsEl = document.getElementById('candidateDetailsComments');
-  if (commentsEl) {
-    const count = Number.isFinite(candidate?.commentCount) ? candidate.commentCount : 0;
-    commentsEl.textContent = count === 1 ? '1 comment' : `${count} comments`;
-  }
-
-  const cvEl = document.getElementById('candidateDetailsCv');
+  const cvEl = document.getElementById('candidateDetailsCvFilename');
   const hasCv = !!candidate?.cv?.filename;
   if (cvEl) cvEl.textContent = hasCv ? candidate.cv.filename : 'No CV uploaded';
 
@@ -1235,12 +1388,7 @@ function populateCandidateDetails(candidate) {
     downloadBtn.dataset.candidateId = candidate?.id;
     downloadBtn.disabled = !hasCv;
   }
-
-  const commentsBtn = document.getElementById('candidateDetailsCommentsBtn');
-  if (commentsBtn) {
-    commentsBtn.dataset.candidateId = candidate?.id;
-    commentsBtn.dataset.candidateName = candidate?.name || '';
-  }
+  updateCandidateCommentsCount(candidate?.commentCount, candidate);
 }
 
 function refreshCandidateDetailsModal() {
@@ -1464,75 +1612,13 @@ async function onCandidateDetailsDownloadClick(ev) {
   }
 }
 
-function onCandidateDetailsCommentsClick(ev) {
-  const button = ev.currentTarget;
-  if (!button?.dataset?.candidateId) return;
-  const id = Number(button.dataset.candidateId);
-  if (!id) return;
-  const name = button.dataset.candidateName || '';
-  openCandidateCommentsModal(id, name);
-}
-
-async function openCandidateCommentsModal(candidateId, candidateName) {
-  recruitmentActiveCommentCandidateId = candidateId;
-  recruitmentActiveCommentCandidateName = candidateName || '';
-  recruitmentCandidateComments = [];
-  recruitmentEditingCommentId = null;
-  updateCommentSubmitLabel();
-  const nameEl = document.getElementById('commentsModalCandidateName');
-  if (nameEl) nameEl.textContent = candidateName || '-';
-  const list = document.getElementById('commentsList');
-  if (list) {
-    list.classList.add('text-muted');
-    list.innerHTML = '<p style="font-style: italic;">Loading comments...</p>';
-  }
-  const modal = document.getElementById('commentsModal');
-  if (modal) modal.classList.remove('hidden');
-  const textarea = document.getElementById('commentText');
-  if (textarea) {
-    textarea.value = '';
-    textarea.focus();
-  }
-  try {
-    const res = await apiFetch(`/recruitment/candidates/${candidateId}/comments`);
-    if (!res.ok) throw new Error('Failed');
-    const data = await res.json();
-    recruitmentCandidateComments = Array.isArray(data) ? data : [];
-  } catch (err) {
-    if (list) {
-      list.innerHTML = '<p style="font-style: italic;">Unable to load comments right now.</p>';
-    }
-    return;
-  }
-  recruitmentCandidateComments.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-  renderCandidateComments();
-}
-
-function closeCommentsModal() {
-  const modal = document.getElementById('commentsModal');
-  if (modal) modal.classList.add('hidden');
-  recruitmentActiveCommentCandidateId = null;
-  recruitmentActiveCommentCandidateName = '';
-  recruitmentCandidateComments = [];
-  recruitmentEditingCommentId = null;
-  updateCommentSubmitLabel();
-  const nameEl = document.getElementById('commentsModalCandidateName');
-  if (nameEl) nameEl.textContent = '-';
-  const list = document.getElementById('commentsList');
-  if (list) {
-    list.classList.add('text-muted');
-    list.innerHTML = '<p style="font-style: italic;">No comments yet.</p>';
-  }
-  const textarea = document.getElementById('commentText');
-  if (textarea) textarea.value = '';
-}
-
 function renderCandidateComments() {
   const list = document.getElementById('commentsList');
   if (!list) return;
   if (!recruitmentCandidateComments.length) {
     list.classList.add('text-muted');
     list.innerHTML = '<p style="font-style: italic;">No comments yet. Be the first to add one.</p>';
+    updateCandidateCommentsCount(0);
     return;
   }
   list.classList.remove('text-muted');
@@ -1562,6 +1648,7 @@ function renderCandidateComments() {
     `;
   }).join('');
   list.innerHTML = markup;
+  updateCandidateCommentsCount(recruitmentCandidateComments.length);
 }
 
 function updateCommentSubmitLabel() {
@@ -1616,6 +1703,7 @@ async function onCommentSubmit(ev) {
   recruitmentEditingCommentId = null;
   updateCommentSubmitLabel();
   renderCandidateComments();
+  refreshCandidateDetailsModal();
 }
 
 function onCommentsListClick(ev) {

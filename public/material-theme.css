@@ -914,7 +914,37 @@ body {
 }
 
 .candidate-details-modal {
-  width: min(520px, 100%);
+  width: min(960px, 100%);
+}
+
+.candidate-details-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.candidate-details-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 0;
+}
+
+.candidate-details-column--info {
+  min-width: 0;
+}
+
+.candidate-details-column--preview {
+  min-width: 0;
+}
+
+.candidate-details-summary {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(203, 213, 225, 0.6);
 }
 
 .candidate-details-section {
@@ -937,11 +967,130 @@ body {
   word-break: break-word;
 }
 
-.candidate-details-actions {
+.candidate-comments-panel {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(203, 213, 225, 0.6);
+  min-height: 0;
+  flex: 1;
+}
+
+.candidate-comments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
+}
+
+.candidate-comments-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.candidate-comments-meta {
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+.candidate-comments-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.1);
+  color: rgba(37, 99, 235, 0.95);
+}
+
+.candidate-comments-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.candidate-comments-form .md-textarea {
+  min-height: 96px;
+}
+
+.candidate-cv-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(203, 213, 225, 0.6);
+  min-height: 0;
+  flex: 1;
+}
+
+.candidate-cv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.candidate-cv-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.candidate-cv-filename {
+  font-size: 0.85rem;
+}
+
+.candidate-cv-preview {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  border-radius: 16px;
+  border: 1px dashed rgba(148, 163, 184, 0.6);
+  overflow: hidden;
+  background: rgba(248, 250, 252, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.cv-preview-message {
+  text-align: center;
+  font-size: 0.9rem;
+  color: rgba(71, 85, 105, 0.85);
+  line-height: 1.4;
+}
+
+.cv-preview-frame {
+  border: none;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .candidate-details-modal {
+    width: min(100%, 520px);
+  }
+
+  .candidate-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .candidate-cv-preview {
+    min-height: 280px;
+  }
 }
 
 .candidate-name-cell {
@@ -958,8 +1107,8 @@ body {
 
 .comments-list {
   flex: 1;
-  min-height: 120px;
-  max-height: 320px;
+  min-height: 160px;
+  max-height: 360px;
   overflow-y: auto;
   padding-right: 4px;
   display: flex;
