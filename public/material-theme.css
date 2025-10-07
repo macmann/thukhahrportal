@@ -835,6 +835,12 @@ body {
   z-index: 100;
 }
 
+#candidateDetailsModal {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+}
+
 .modal-card {
   width: min(420px, 100%);
   background: rgba(255, 255, 255, 0.95);
@@ -914,7 +920,14 @@ body {
 }
 
 .candidate-details-modal {
-  width: min(960px, 100%);
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  padding: clamp(24px, 4vw, 40px);
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .candidate-details-grid {
@@ -1081,7 +1094,7 @@ body {
 
 @media (max-width: 900px) {
   .candidate-details-modal {
-    width: min(100%, 520px);
+    padding: 24px 16px;
   }
 
   .candidate-details-grid {
