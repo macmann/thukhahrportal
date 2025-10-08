@@ -1336,6 +1336,32 @@ init().then(async () => {
     res.status(201).json(newPosition);
   });
 
+  app.patch('/recruitment/positions/:id', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.positions = db.data.positions || [];
+    const position = db.data.positions.find(p => p.id == req.params.id);
+    if (!position) {
+      return res.status(404).json({ error: 'Position not found' });
+    }
+    const titleProvided = Object.prototype.hasOwnProperty.call(req.body, 'title');
+    const departmentProvided = Object.prototype.hasOwnProperty.call(req.body, 'department');
+    const descriptionProvided = Object.prototype.hasOwnProperty.call(req.body, 'description');
+    const nextTitle = titleProvided ? String(req.body.title || '').trim() : position.title;
+    if (!nextTitle) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+    position.title = nextTitle;
+    if (departmentProvided) {
+      position.department = String(req.body.department || '').trim();
+    }
+    if (descriptionProvided) {
+      position.description = String(req.body.description || '').trim();
+    }
+    position.updatedAt = new Date().toISOString();
+    await db.write();
+    res.json(position);
+  });
+
   app.get('/recruitment/candidates', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const { positionId } = req.query;
@@ -1398,6 +1424,84 @@ init().then(async () => {
     });
   });
 
+  app.patch('/recruitment/candidates/:id', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.candidates = db.data.candidates || [];
+    const candidate = db.data.candidates.find(c => c.id == req.params.id);
+    if (!candidate) {
+      return res.status(404).json({ error: 'Candidate not found' });
+    }
+    const updates = {};
+    if (Object.prototype.hasOwnProperty.call(req.body, 'positionId')) {
+      const newPositionId = Number(req.body.positionId);
+      if (!newPositionId || Number.isNaN(newPositionId)) {
+        return res.status(400).json({ error: 'Valid position is required' });
+      }
+      db.data.positions = db.data.positions || [];
+      const positionExists = db.data.positions.some(p => p.id == newPositionId);
+      if (!positionExists) {
+        return res.status(404).json({ error: 'Position not found' });
+      }
+      candidate.positionId = Number(newPositionId);
+      updates.positionId = candidate.positionId;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'name')) {
+      const newName = String(req.body.name || '').trim();
+      if (!newName) {
+        return res.status(400).json({ error: 'Name is required' });
+      }
+      candidate.name = newName;
+      updates.name = candidate.name;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'contact')) {
+      const newContact = String(req.body.contact || '').trim();
+      if (!newContact) {
+        return res.status(400).json({ error: 'Contact is required' });
+      }
+      candidate.contact = newContact;
+      updates.contact = candidate.contact;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'status')) {
+      const nextStatus = String(req.body.status || '');
+      if (!CANDIDATE_STATUSES.includes(nextStatus)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      candidate.status = nextStatus;
+      updates.status = candidate.status;
+    }
+    if (req.body.cv && req.body.cv.data && req.body.cv.filename) {
+      candidate.cv = {
+        filename: req.body.cv.filename,
+        contentType: req.body.cv.contentType || 'application/octet-stream',
+        data: req.body.cv.data
+      };
+      updates.cv = candidate.cv;
+    }
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ error: 'No changes provided' });
+    }
+    candidate.updatedAt = new Date().toISOString();
+    await db.write();
+    const { cv, comments = [], ...rest } = candidate;
+    res.json({
+      ...rest,
+      commentCount: comments.length,
+      cv: cv ? { filename: cv.filename, contentType: cv.contentType } : null
+    });
+  });
+
+  app.delete('/recruitment/candidates/:id', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.candidates = db.data.candidates || [];
+    const idx = db.data.candidates.findIndex(c => c.id == req.params.id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Candidate not found' });
+    }
+    db.data.candidates.splice(idx, 1);
+    await db.write();
+    res.status(204).end();
+  });
+
   app.patch('/recruitment/candidates/:id/status', authRequired, managerOnly, async (req, res) => {
     await db.read();
     const { status } = req.body;
@@ -1430,6 +1534,37 @@ init().then(async () => {
     res.setHeader('Content-Type', candidate.cv.contentType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+  });
+
+  app.get('/recruitment/candidates/search', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    const term = (req.query.q || '').toString().trim();
+    if (!term) {
+      return res.json([]);
+    }
+    const query = term.toLowerCase();
+    db.data.candidates = db.data.candidates || [];
+    db.data.positions = db.data.positions || [];
+    const positionMap = new Map(db.data.positions.map(pos => [String(pos.id), pos.title]));
+    const matches = db.data.candidates
+      .filter(candidate => {
+        const name = (candidate.name || '').toString().toLowerCase();
+        const contact = (candidate.contact || '').toString().toLowerCase();
+        return name.includes(query) || contact.includes(query);
+      })
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+      .slice(0, 20)
+      .map(candidate => ({
+        id: candidate.id,
+        name: candidate.name,
+        contact: candidate.contact,
+        status: candidate.status,
+        positionId: candidate.positionId,
+        positionTitle: positionMap.get(String(candidate.positionId)) || null,
+        createdAt: candidate.createdAt,
+        updatedAt: candidate.updatedAt
+      }));
+    res.json(matches);
   });
 
   app.get('/recruitment/candidates/:id/comments', authRequired, managerOnly, async (req, res) => {

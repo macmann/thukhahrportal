@@ -91,6 +91,8 @@ function refreshTabGroupVisibility() {
 }
 
 const PIPELINE_STATUSES = ['New', 'Selected for Interview', 'Interview Completed', 'Rejected', 'Hired'];
+const CANDIDATE_CV_HELP_DEFAULT = 'Accepted formats: PDF or Word documents.';
+const CANDIDATE_CV_HELP_EDIT = 'Accepted formats: PDF or Word documents. Leave blank to keep the current CV.';
 let recruitmentPositions = [];
 let recruitmentCandidates = [];
 let recruitmentActivePositionId = null;
@@ -99,6 +101,14 @@ let recruitmentActiveCommentCandidateId = null;
 let recruitmentCandidateComments = [];
 let recruitmentEditingCommentId = null;
 let recruitmentActiveDetailsCandidateId = null;
+let recruitmentEditingPositionId = null;
+let recruitmentEditingCandidateId = null;
+let recruitmentCandidateSearchTimer = null;
+let recruitmentCandidateSearchAbort = null;
+let recruitmentCandidateSearchResults = [];
+let recruitmentCandidateSearchQuery = '';
+let recruitmentCandidateSearchLoading = false;
+let recruitmentCandidateSearchError = null;
 const candidateCvPreviewUrls = new Map();
 let currentDrawerFields = [];
 let hireModalState = { candidateId: null, select: null, previousStatus: null, candidate: null };
@@ -824,8 +834,14 @@ async function initRecruitment() {
   const positionForm = document.getElementById('positionForm');
   if (positionForm) positionForm.addEventListener('submit', onPositionSubmit);
 
+  const positionCancelBtn = document.getElementById('positionCancelEditBtn');
+  if (positionCancelBtn) positionCancelBtn.addEventListener('click', onPositionEditCancel);
+
   const candidateForm = document.getElementById('candidateForm');
   if (candidateForm) candidateForm.addEventListener('submit', onCandidateSubmit);
+
+  const candidateCancelBtn = document.getElementById('candidateCancelEditBtn');
+  if (candidateCancelBtn) candidateCancelBtn.addEventListener('click', onCandidateEditCancel);
 
   const positionSelect = document.getElementById('candidatePositionSelect');
   if (positionSelect) positionSelect.addEventListener('change', onCandidatePositionChange);
@@ -838,6 +854,9 @@ async function initRecruitment() {
     candidateTable.addEventListener('change', onCandidateStatusChange);
     candidateTable.addEventListener('click', onCandidateTableClick);
   }
+
+  const candidateSearchInput = document.getElementById('candidateSearchInput');
+  if (candidateSearchInput) candidateSearchInput.addEventListener('input', onCandidateSearchInput);
 
   const commentsList = document.getElementById('commentsList');
   if (commentsList) commentsList.addEventListener('click', onCommentsListClick);
@@ -876,6 +895,7 @@ async function initRecruitment() {
   }
 
   await loadRecruitmentPositions();
+  renderCandidateSearchResults();
 }
 
 async function loadRecruitmentPositions() {
@@ -883,6 +903,13 @@ async function loadRecruitmentPositions() {
   const data = await getJSON('/recruitment/positions');
   recruitmentPositions = Array.isArray(data) ? data : [];
   recruitmentPositions.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  if (recruitmentEditingPositionId) {
+    const stillExists = recruitmentPositions.some(p => p.id == recruitmentEditingPositionId);
+    if (!stillExists) {
+      resetPositionForm();
+    }
+  }
 
   if (recruitmentPositions.length) {
     const exists = recruitmentPositions.some(p => p.id == recruitmentActivePositionId);
@@ -893,6 +920,15 @@ async function loadRecruitmentPositions() {
 
   renderRecruitmentPositions();
   updateCandidatePositionSelect();
+
+  if (recruitmentEditingPositionId) {
+    const editingPosition = recruitmentPositions.find(p => p.id == recruitmentEditingPositionId);
+    if (editingPosition) {
+      fillPositionForm(editingPosition);
+    } else {
+      resetPositionForm();
+    }
+  }
 
   if (recruitmentActivePositionId) {
     await loadRecruitmentCandidates(recruitmentActivePositionId);
@@ -919,19 +955,75 @@ function renderRecruitmentPositions() {
     const meta = metaParts.length ? `<div class="position-item__meta">${metaParts.join(' • ')}</div>` : '';
     const description = pos.description ? `<div class="position-item__description">${escapeHtml(pos.description)}</div>` : '';
     return `
-      <button type="button" class="position-item${isActive ? ' position-item--active' : ''}" data-position-id="${pos.id}">
-        <span class="material-symbols-rounded position-item__icon">work</span>
-        <div class="position-item__content">
-          <div class="position-item__title">${escapeHtml(pos.title)}</div>
-          ${meta}
-          ${description}
+      <div class="position-item${isActive ? ' position-item--active' : ''}" data-position-id="${pos.id}">
+        <button type="button" class="position-item__select" data-action="select-position" data-position-id="${pos.id}">
+          <span class="material-symbols-rounded position-item__icon">work</span>
+          <div class="position-item__content">
+            <div class="position-item__title">${escapeHtml(pos.title)}</div>
+            ${meta}
+            ${description}
+          </div>
+          <span class="material-symbols-rounded position-item__chevron">chevron_right</span>
+        </button>
+        <div class="position-item__actions">
+          <button type="button" class="md-button md-button--text md-button--small" data-action="edit-position" data-position-id="${pos.id}">
+            <span class="material-symbols-rounded">edit</span>
+            Edit
+          </button>
         </div>
-        <span class="material-symbols-rounded position-item__chevron">chevron_right</span>
-      </button>
+      </div>
     `;
   }).join('');
   container.innerHTML = markup;
   updateCandidateFormAvailability();
+}
+
+function fillPositionForm(position) {
+  const titleEl = document.getElementById('positionTitle');
+  if (titleEl) titleEl.value = position?.title || '';
+  const deptEl = document.getElementById('positionDepartment');
+  if (deptEl) deptEl.value = position?.department || '';
+  const descEl = document.getElementById('positionDescription');
+  if (descEl) descEl.value = position?.description || '';
+}
+
+function startPositionEdit(position) {
+  if (!position) return;
+  recruitmentEditingPositionId = position.id;
+  const form = document.getElementById('positionForm');
+  if (form) form.dataset.editId = position.id;
+  fillPositionForm(position);
+  const submitLabel = document.querySelector('#positionSubmitBtn .position-submit-label');
+  if (submitLabel) submitLabel.textContent = 'Update Position';
+  const icon = document.getElementById('positionSubmitIcon');
+  if (icon) icon.textContent = 'edit';
+  const cancelBtn = document.getElementById('positionCancelEditBtn');
+  if (cancelBtn) cancelBtn.classList.remove('hidden');
+  const titleEl = document.getElementById('positionTitle');
+  if (titleEl) {
+    titleEl.focus();
+    titleEl.setSelectionRange(titleEl.value.length, titleEl.value.length);
+  }
+}
+
+function resetPositionForm() {
+  const wasEditing = Boolean(recruitmentEditingPositionId);
+  recruitmentEditingPositionId = null;
+  const form = document.getElementById('positionForm');
+  if (form && wasEditing) {
+    form.reset();
+  }
+  if (form) delete form.dataset.editId;
+  const submitLabel = document.querySelector('#positionSubmitBtn .position-submit-label');
+  if (submitLabel) submitLabel.textContent = 'Save Position';
+  const icon = document.getElementById('positionSubmitIcon');
+  if (icon) icon.textContent = 'save';
+  const cancelBtn = document.getElementById('positionCancelEditBtn');
+  if (cancelBtn) cancelBtn.classList.add('hidden');
+}
+
+function onPositionEditCancel() {
+  resetPositionForm();
 }
 
 function updateCandidatePositionSelect() {
@@ -965,9 +1057,20 @@ function updateCandidateFormAvailability() {
 }
 
 function onPositionsListClick(ev) {
-  const target = ev.target.closest('[data-position-id]');
-  if (!target) return;
-  const id = Number(target.getAttribute('data-position-id'));
+  const editBtn = ev.target.closest('[data-action="edit-position"]');
+  if (editBtn) {
+    const id = Number(editBtn.getAttribute('data-position-id'));
+    if (Number.isNaN(id)) return;
+    const position = recruitmentPositions.find(p => p.id == id);
+    if (!position) return;
+    startPositionEdit(position);
+    return;
+  }
+  const selectTarget = ev.target.closest('[data-action="select-position"]');
+  const container = ev.target.closest('.position-item');
+  const idSource = selectTarget || container;
+  if (!idSource) return;
+  const id = Number(idSource.getAttribute('data-position-id'));
   if (Number.isNaN(id)) return;
   recruitmentActivePositionId = id;
   updateCandidatePositionSelect();
@@ -1001,13 +1104,21 @@ async function onPositionSubmit(ev) {
     return;
   }
   try {
-    const res = await apiFetch('/recruitment/positions', {
-      method: 'POST',
+    const editingId = recruitmentEditingPositionId;
+    const endpoint = editingId ? `/recruitment/positions/${editingId}` : '/recruitment/positions';
+    const method = editingId ? 'PATCH' : 'POST';
+    const res = await apiFetch(endpoint, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error('Failed');
-    form.reset();
+    if (editingId) {
+      recruitmentActivePositionId = editingId;
+      resetPositionForm();
+    } else {
+      form.reset();
+    }
     await loadRecruitmentPositions();
   } catch (err) {
     alert('Failed to save position. Please try again.');
@@ -1038,32 +1149,42 @@ async function onCandidateSubmit(ev) {
     alert('Contact details are required.');
     return;
   }
-  if (!file || !file.size) {
+  const editingId = recruitmentEditingCandidateId;
+  const hasNewCv = file && file.size;
+  if (!editingId && !hasNewCv) {
     alert('Please upload a CV.');
     return;
   }
   try {
-    const base64 = await fileToBase64(file);
     const payload = {
       positionId,
       name,
-      contact,
-      cv: {
+      contact
+    };
+    if (hasNewCv) {
+      const base64 = await fileToBase64(file);
+      payload.cv = {
         filename: file.name,
         contentType: file.type,
         data: base64
-      }
-    };
-    const res = await apiFetch('/recruitment/candidates', {
-      method: 'POST',
+      };
+    }
+    const endpoint = editingId ? `/recruitment/candidates/${editingId}` : '/recruitment/candidates';
+    const method = editingId ? 'PATCH' : 'POST';
+    const res = await apiFetch(endpoint, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error('Failed');
-    form.reset();
     recruitmentActivePositionId = positionId;
-    const positionSelect = document.getElementById('candidatePositionSelect');
-    if (positionSelect) positionSelect.value = positionId;
+    if (editingId) {
+      resetCandidateForm();
+    } else {
+      form.reset();
+      updateCandidatePositionSelect();
+    }
+    renderRecruitmentPositions();
     await loadRecruitmentCandidates(positionId);
   } catch (err) {
     alert('Failed to add candidate. Please try again.');
@@ -1078,6 +1199,14 @@ async function loadRecruitmentCandidates(positionId) {
   }
   const data = await getJSON(`/recruitment/candidates?positionId=${encodeURIComponent(positionId)}`);
   recruitmentCandidates = Array.isArray(data) ? data : [];
+  if (recruitmentEditingCandidateId) {
+    const editingCandidate = recruitmentCandidates.find(c => c.id == recruitmentEditingCandidateId);
+    if (editingCandidate) {
+      fillCandidateForm(editingCandidate);
+    } else {
+      resetCandidateForm();
+    }
+  }
   renderRecruitmentCandidates();
 }
 
@@ -1085,12 +1214,12 @@ function renderRecruitmentCandidates() {
   const body = document.getElementById('candidateTableBody');
   if (!body) return;
   if (!recruitmentActivePositionId) {
-    body.innerHTML = '<tr><td colspan="3" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td></tr>';
+    body.innerHTML = '<tr><td colspan="4" class="text-muted" style="padding:16px; font-style: italic;">Select a position to view candidates.</td></tr>';
     closeCandidateDetailsModal();
     return;
   }
   if (!recruitmentCandidates.length) {
-    body.innerHTML = '<tr><td colspan="3" class="text-muted" style="padding:16px; font-style: italic;">No candidates yet for this position.</td></tr>';
+    body.innerHTML = '<tr><td colspan="4" class="text-muted" style="padding:16px; font-style: italic;">No candidates yet for this position.</td></tr>';
     closeCandidateDetailsModal();
     return;
   }
@@ -1114,6 +1243,18 @@ function renderRecruitmentCandidates() {
             ${statusOptions}
           </select>
         </td>
+        <td>
+          <div class="candidate-actions">
+            <button type="button" class="md-button md-button--text md-button--small" data-action="edit-candidate" data-candidate-id="${candidate.id}">
+              <span class="material-symbols-rounded">edit</span>
+              Edit
+            </button>
+            <button type="button" class="md-button md-button--text md-button--small" data-action="delete-candidate" data-candidate-id="${candidate.id}">
+              <span class="material-symbols-rounded">delete</span>
+              Delete
+            </button>
+          </div>
+        </td>
       </tr>
     `;
   }).join('');
@@ -1126,6 +1267,207 @@ function renderRecruitmentCandidates() {
     }
   });
   refreshCandidateDetailsModal();
+}
+
+function fillCandidateForm(candidate) {
+  const positionSelect = document.getElementById('candidatePositionSelect');
+  if (positionSelect) {
+    const value = candidate && candidate.positionId != null ? String(candidate.positionId) : '';
+    positionSelect.value = value;
+  }
+  const nameEl = document.getElementById('candidateName');
+  if (nameEl) nameEl.value = candidate?.name || '';
+  const contactEl = document.getElementById('candidateContact');
+  if (contactEl) contactEl.value = candidate?.contact || '';
+  const cvInput = document.getElementById('candidateCv');
+  if (cvInput) cvInput.value = '';
+}
+
+function startCandidateEdit(candidate) {
+  if (!candidate) return;
+  recruitmentEditingCandidateId = candidate.id;
+  const form = document.getElementById('candidateForm');
+  if (form) form.dataset.editId = candidate.id;
+  fillCandidateForm(candidate);
+  const submitLabel = document.querySelector('#candidateSubmitBtn .candidate-submit-label');
+  if (submitLabel) submitLabel.textContent = 'Update Candidate';
+  const icon = document.getElementById('candidateSubmitIcon');
+  if (icon) icon.textContent = 'save';
+  const cancelBtn = document.getElementById('candidateCancelEditBtn');
+  if (cancelBtn) cancelBtn.classList.remove('hidden');
+  const cvInput = document.getElementById('candidateCv');
+  if (cvInput) {
+    cvInput.removeAttribute('required');
+    cvInput.value = '';
+  }
+  const helpText = document.getElementById('candidateCvHelpText');
+  if (helpText) helpText.textContent = CANDIDATE_CV_HELP_EDIT;
+  const nameEl = document.getElementById('candidateName');
+  if (nameEl) {
+    nameEl.focus();
+    nameEl.setSelectionRange(nameEl.value.length, nameEl.value.length);
+  }
+}
+
+function resetCandidateForm() {
+  const wasEditing = Boolean(recruitmentEditingCandidateId);
+  recruitmentEditingCandidateId = null;
+  const form = document.getElementById('candidateForm');
+  if (form && wasEditing) {
+    form.reset();
+  }
+  if (form) delete form.dataset.editId;
+  const submitLabel = document.querySelector('#candidateSubmitBtn .candidate-submit-label');
+  if (submitLabel) submitLabel.textContent = 'Add to Pipeline';
+  const icon = document.getElementById('candidateSubmitIcon');
+  if (icon) icon.textContent = 'upload_file';
+  const cancelBtn = document.getElementById('candidateCancelEditBtn');
+  if (cancelBtn) cancelBtn.classList.add('hidden');
+  const cvInput = document.getElementById('candidateCv');
+  if (cvInput) {
+    cvInput.value = '';
+    cvInput.setAttribute('required', '');
+  }
+  const helpText = document.getElementById('candidateCvHelpText');
+  if (helpText) helpText.textContent = CANDIDATE_CV_HELP_DEFAULT;
+  updateCandidatePositionSelect();
+}
+
+function onCandidateEditCancel() {
+  resetCandidateForm();
+}
+
+async function handleCandidateDelete(id) {
+  if (!id) return;
+  const candidate = recruitmentCandidates.find(c => c.id == id);
+  if (!candidate) return;
+  const confirmed = window.confirm('Remove this candidate from the pipeline?');
+  if (!confirmed) return;
+  try {
+    const res = await apiFetch(`/recruitment/candidates/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed');
+  } catch (err) {
+    alert('Failed to delete candidate. Please try again.');
+    return;
+  }
+  if (recruitmentActiveDetailsCandidateId == id) {
+    closeCandidateDetailsModal();
+  }
+  if (recruitmentEditingCandidateId == id) {
+    resetCandidateForm();
+  }
+  await loadRecruitmentCandidates(recruitmentActivePositionId);
+}
+
+function onCandidateSearchInput(ev) {
+  const value = ev.target.value.trim();
+  recruitmentCandidateSearchQuery = value;
+  if (recruitmentCandidateSearchTimer) {
+    clearTimeout(recruitmentCandidateSearchTimer);
+    recruitmentCandidateSearchTimer = null;
+  }
+  if (recruitmentCandidateSearchAbort) {
+    recruitmentCandidateSearchAbort.abort();
+    recruitmentCandidateSearchAbort = null;
+  }
+  if (!value) {
+    recruitmentCandidateSearchResults = [];
+    recruitmentCandidateSearchLoading = false;
+    recruitmentCandidateSearchError = null;
+    renderCandidateSearchResults();
+    return;
+  }
+  recruitmentCandidateSearchLoading = true;
+  recruitmentCandidateSearchError = null;
+  renderCandidateSearchResults();
+  recruitmentCandidateSearchTimer = setTimeout(() => {
+    performCandidateSearch(value);
+  }, 300);
+}
+
+async function performCandidateSearch(query) {
+  if (!query) return;
+  recruitmentCandidateSearchTimer = null;
+  if (recruitmentCandidateSearchAbort) {
+    recruitmentCandidateSearchAbort.abort();
+  }
+  const controller = new AbortController();
+  recruitmentCandidateSearchAbort = controller;
+  let data;
+  try {
+    const res = await apiFetch(`/recruitment/candidates/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+    if (!res.ok) throw new Error('Failed');
+    data = await res.json();
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    if (recruitmentCandidateSearchQuery !== query) return;
+    recruitmentCandidateSearchError = 'Unable to search candidates right now.';
+    recruitmentCandidateSearchResults = [];
+    recruitmentCandidateSearchLoading = false;
+    recruitmentCandidateSearchAbort = null;
+    renderCandidateSearchResults();
+    return;
+  }
+  recruitmentCandidateSearchAbort = null;
+  if (recruitmentCandidateSearchQuery !== query) {
+    return;
+  }
+  recruitmentCandidateSearchResults = Array.isArray(data) ? data : [];
+  recruitmentCandidateSearchLoading = false;
+  recruitmentCandidateSearchError = null;
+  renderCandidateSearchResults();
+}
+
+function renderCandidateSearchResults() {
+  const container = document.getElementById('candidateSearchResults');
+  if (!container) return;
+  if (!recruitmentCandidateSearchQuery) {
+    container.classList.add('text-muted');
+    container.innerHTML = 'Start typing to look up existing applicants.';
+    return;
+  }
+  container.classList.remove('text-muted');
+  if (recruitmentCandidateSearchLoading) {
+    container.innerHTML = `
+      <div class="candidate-search-loading">
+        <span class="material-symbols-rounded">progress_activity</span>
+        Searching...
+      </div>
+    `;
+    return;
+  }
+  if (recruitmentCandidateSearchError) {
+    container.innerHTML = `<div class="candidate-search-empty" style="color:#b3261e;">${escapeHtml(recruitmentCandidateSearchError)}</div>`;
+    return;
+  }
+  if (!recruitmentCandidateSearchResults.length) {
+    container.innerHTML = '<div class="candidate-search-empty text-muted">No matching candidates found.</div>';
+    return;
+  }
+  const items = recruitmentCandidateSearchResults.map(result => {
+    const name = escapeHtml(result?.name || 'Unknown candidate');
+    const status = result?.status
+      ? `<div class="candidate-search-item__status">${escapeHtml(result.status)}</div>`
+      : '<div class="candidate-search-item__status text-muted">-</div>';
+    const metaParts = [];
+    if (result?.contact) metaParts.push(escapeHtml(result.contact));
+    if (result?.positionTitle) metaParts.push(escapeHtml(result.positionTitle));
+    const applied = formatRecruitmentDate(result?.createdAt);
+    if (applied) metaParts.push(`Applied ${escapeHtml(applied)}`);
+    const meta = metaParts.length
+      ? `<div class="candidate-search-item__meta">${metaParts.map(part => `<span>${part}</span>`).join('')}</div>`
+      : '';
+    return `
+      <div class="candidate-search-item">
+        <div>
+          <div class="candidate-search-item__name">${name}</div>
+          ${meta}
+        </div>
+        ${status}
+      </div>
+    `;
+  }).join('');
+  container.innerHTML = items;
 }
 
 async function onCandidateStatusChange(ev) {
@@ -1164,6 +1506,25 @@ async function onCandidateStatusChange(ev) {
 }
 
 async function onCandidateTableClick(ev) {
+  const deleteBtn = ev.target.closest('[data-action="delete-candidate"]');
+  if (deleteBtn) {
+    const id = Number(deleteBtn.getAttribute('data-candidate-id'));
+    if (!Number.isNaN(id)) {
+      await handleCandidateDelete(id);
+    }
+    return;
+  }
+  const editBtn = ev.target.closest('[data-action="edit-candidate"]');
+  if (editBtn) {
+    const id = Number(editBtn.getAttribute('data-candidate-id'));
+    if (!Number.isNaN(id)) {
+      const candidate = recruitmentCandidates.find(c => c.id == id);
+      if (candidate) {
+        startCandidateEdit(candidate);
+      }
+    }
+    return;
+  }
   const detailsButton = ev.target.closest('.candidate-details');
   if (!detailsButton) return;
   const id = Number(detailsButton.getAttribute('data-candidate-id'));
