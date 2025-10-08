@@ -720,6 +720,26 @@
         </div>
       </div>
 
+      <div id="candidateCvModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="candidateCvModalTitle">
+        <div class="modal-card modal-card--wide candidate-cv-modal">
+          <button type="button" id="candidateCvModalCloseBtn" class="modal-close material-symbols-rounded" aria-label="Close CV preview">close</button>
+          <h3 id="candidateCvModalTitle" class="modal-title">
+            <span class="material-symbols-rounded">picture_as_pdf</span>
+            <span id="candidateCvModalTitleText">CV Preview</span>
+          </h3>
+          <div class="candidate-cv-modal__body">
+            <p id="candidateCvModalMessage" class="candidate-cv-modal__message text-muted">Select a candidate to preview their CV.</p>
+            <iframe id="candidateCvModalIframe" class="candidate-cv-modal__iframe hidden" title="Candidate CV preview"></iframe>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="candidateCvModalDownloadBtn" class="md-button md-button--outlined md-button--small hidden">
+              <span class="material-symbols-rounded">download</span>
+              Download CV
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Manager Applications Panel -->
       <section id="managerAppsPanel" class="panel hidden">
         <div class="panel-header">

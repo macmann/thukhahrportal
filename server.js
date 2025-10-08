@@ -1562,7 +1562,10 @@ init().then(async () => {
         positionId: candidate.positionId,
         positionTitle: positionMap.get(String(candidate.positionId)) || null,
         createdAt: candidate.createdAt,
-        updatedAt: candidate.updatedAt
+        updatedAt: candidate.updatedAt,
+        hasCv: !!(candidate.cv && candidate.cv.data),
+        cvFilename: candidate.cv?.filename || null,
+        cvContentType: candidate.cv?.contentType || null
       }));
     res.json(matches);
   });

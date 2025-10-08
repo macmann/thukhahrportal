@@ -110,6 +110,7 @@ let recruitmentCandidateSearchQuery = '';
 let recruitmentCandidateSearchLoading = false;
 let recruitmentCandidateSearchError = null;
 const candidateCvPreviewUrls = new Map();
+let candidateCvModalCandidateId = null;
 let currentDrawerFields = [];
 let hireModalState = { candidateId: null, select: null, previousStatus: null, candidate: null };
 let currentHireFields = [];
@@ -858,6 +859,9 @@ async function initRecruitment() {
   const candidateSearchInput = document.getElementById('candidateSearchInput');
   if (candidateSearchInput) candidateSearchInput.addEventListener('input', onCandidateSearchInput);
 
+  const candidateSearchResults = document.getElementById('candidateSearchResults');
+  if (candidateSearchResults) candidateSearchResults.addEventListener('click', onCandidateSearchResultsClick);
+
   const commentsList = document.getElementById('commentsList');
   if (commentsList) commentsList.addEventListener('click', onCommentsListClick);
 
@@ -893,6 +897,19 @@ async function initRecruitment() {
       if (ev.target === hireModal) closeCandidateHireModal();
     });
   }
+
+  const candidateCvModal = document.getElementById('candidateCvModal');
+  if (candidateCvModal) {
+    candidateCvModal.addEventListener('click', ev => {
+      if (ev.target === candidateCvModal) closeCandidateCvModal();
+    });
+  }
+
+  const candidateCvModalCloseBtn = document.getElementById('candidateCvModalCloseBtn');
+  if (candidateCvModalCloseBtn) candidateCvModalCloseBtn.onclick = closeCandidateCvModal;
+
+  const candidateCvModalDownloadBtn = document.getElementById('candidateCvModalDownloadBtn');
+  if (candidateCvModalDownloadBtn) candidateCvModalDownloadBtn.addEventListener('click', onCandidateCvModalDownload);
 
   await loadRecruitmentPositions();
   renderCandidateSearchResults();
@@ -1448,7 +1465,7 @@ function renderCandidateSearchResults() {
     const name = escapeHtml(result?.name || 'Unknown candidate');
     const status = result?.status
       ? `<div class="candidate-search-item__status">${escapeHtml(result.status)}</div>`
-      : '<div class="candidate-search-item__status text-muted">-</div>';
+      : '<div class="candidate-search-item__status candidate-search-item__status--muted">No status</div>';
     const metaParts = [];
     if (result?.contact) metaParts.push(escapeHtml(result.contact));
     if (result?.positionTitle) metaParts.push(escapeHtml(result.positionTitle));
@@ -1457,17 +1474,147 @@ function renderCandidateSearchResults() {
     const meta = metaParts.length
       ? `<div class="candidate-search-item__meta">${metaParts.map(part => `<span>${part}</span>`).join('')}</div>`
       : '';
+    const hasCv = !!result?.hasCv;
+    const actions = hasCv
+      ? `<button type="button" class="md-button md-button--text md-button--small candidate-search-item__view-btn" data-action="view-candidate-cv" data-candidate-id="${escapeHtml(String(result.id))}"><span class="material-symbols-rounded">picture_as_pdf</span>View CV</button>`
+      : '<div class="candidate-search-item__no-cv">No CV uploaded</div>';
     return `
       <div class="candidate-search-item">
-        <div>
+        <div class="candidate-search-item__content">
           <div class="candidate-search-item__name">${name}</div>
           ${meta}
         </div>
-        ${status}
+        <div class="candidate-search-item__actions">
+          ${status}
+          ${actions}
+        </div>
       </div>
     `;
   }).join('');
   container.innerHTML = items;
+}
+
+function resetCandidateCvModal(message = 'Select a candidate to preview their CV.') {
+  const iframe = document.getElementById('candidateCvModalIframe');
+  const messageEl = document.getElementById('candidateCvModalMessage');
+  if (iframe) {
+    iframe.classList.add('hidden');
+    iframe.removeAttribute('src');
+  }
+  if (messageEl) {
+    messageEl.textContent = message;
+    messageEl.classList.remove('hidden');
+  }
+}
+
+function setCandidateCvModalUrl(url) {
+  const iframe = document.getElementById('candidateCvModalIframe');
+  const messageEl = document.getElementById('candidateCvModalMessage');
+  if (!iframe || !messageEl) return;
+  iframe.src = url;
+  iframe.classList.remove('hidden');
+  messageEl.classList.add('hidden');
+}
+
+async function loadCandidateSearchCvPreview(candidateId) {
+  const iframe = document.getElementById('candidateCvModalIframe');
+  const messageEl = document.getElementById('candidateCvModalMessage');
+  if (!iframe || !messageEl) return;
+  messageEl.textContent = 'Loading CV preview...';
+  messageEl.classList.remove('hidden');
+  iframe.classList.add('hidden');
+  try {
+    const res = await apiFetch(`/recruitment/candidates/${candidateId}/cv`);
+    if (!res.ok) throw new Error('Failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    if (candidateCvModalCandidateId !== candidateId) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    candidateCvPreviewUrls.set(candidateId, url);
+    setCandidateCvModalUrl(url);
+  } catch (err) {
+    if (candidateCvModalCandidateId !== candidateId) return;
+    resetCandidateCvModal('Unable to load CV preview right now. Use the download button to access the CV.');
+  }
+}
+
+function openCandidateCvModal(candidateId) {
+  const modal = document.getElementById('candidateCvModal');
+  if (!modal) return;
+  const candidate = recruitmentCandidateSearchResults.find(c => String(c.id) === String(candidateId));
+  if (!candidate) return;
+  candidateCvModalCandidateId = candidate.id;
+  modal.classList.remove('hidden');
+  const titleText = document.getElementById('candidateCvModalTitleText');
+  if (titleText) {
+    titleText.textContent = candidate?.name ? `CV Preview · ${candidate.name}` : 'CV Preview';
+  }
+  const downloadBtn = document.getElementById('candidateCvModalDownloadBtn');
+  if (downloadBtn) {
+    const hasCv = !!candidate?.hasCv;
+    downloadBtn.classList.toggle('hidden', !hasCv);
+    downloadBtn.dataset.candidateId = hasCv ? String(candidate.id) : '';
+    downloadBtn.disabled = !hasCv;
+  }
+  if (!candidate?.hasCv) {
+    resetCandidateCvModal('No CV uploaded for this candidate.');
+    return;
+  }
+  const contentType = String(candidate.cvContentType || '').toLowerCase();
+  if (!contentType.includes('pdf')) {
+    resetCandidateCvModal('CV preview is available only for PDF files. Use the download button to open this document.');
+    return;
+  }
+  const cachedUrl = candidateCvPreviewUrls.get(candidate.id);
+  if (cachedUrl) {
+    setCandidateCvModalUrl(cachedUrl);
+    return;
+  }
+  resetCandidateCvModal('Loading CV preview...');
+  loadCandidateSearchCvPreview(candidate.id);
+}
+
+function closeCandidateCvModal() {
+  const modal = document.getElementById('candidateCvModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  candidateCvModalCandidateId = null;
+  const titleText = document.getElementById('candidateCvModalTitleText');
+  if (titleText) {
+    titleText.textContent = 'CV Preview';
+  }
+  const downloadBtn = document.getElementById('candidateCvModalDownloadBtn');
+  if (downloadBtn) {
+    downloadBtn.classList.add('hidden');
+    downloadBtn.dataset.candidateId = '';
+    downloadBtn.disabled = false;
+  }
+  resetCandidateCvModal('Select a candidate to preview their CV.');
+}
+
+async function onCandidateCvModalDownload(ev) {
+  const button = ev.currentTarget;
+  if (!button || button.disabled) return;
+  const id = button.dataset.candidateId;
+  if (!id) return;
+  button.disabled = true;
+  try {
+    await downloadCandidateCv(id);
+  } catch (err) {
+    alert('Unable to download CV at the moment.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function onCandidateSearchResultsClick(ev) {
+  const button = ev.target.closest('[data-action="view-candidate-cv"]');
+  if (!button) return;
+  const id = button.getAttribute('data-candidate-id');
+  if (!id) return;
+  openCandidateCvModal(id);
 }
 
 async function onCandidateStatusChange(ev) {
@@ -1537,8 +1684,9 @@ async function downloadCandidateCv(id) {
   if (!res.ok) throw new Error('Failed');
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
-  const candidate = recruitmentCandidates.find(c => c.id == id);
-  const filename = candidate?.cv?.filename || `candidate-${id}`;
+  const candidate = recruitmentCandidates.find(c => c.id == id) ||
+    recruitmentCandidateSearchResults.find(c => String(c.id) === String(id));
+  const filename = candidate?.cv?.filename || candidate?.cvFilename || `candidate-${id}`;
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
