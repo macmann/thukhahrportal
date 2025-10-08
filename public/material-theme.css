@@ -637,6 +637,10 @@ body {
   gap: 20px;
 }
 
+.card-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .md-card {
   background: rgba(248, 250, 255, 0.85);
   border-radius: 24px;
