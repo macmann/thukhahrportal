@@ -309,11 +309,19 @@
   animation: spin 1s linear infinite;
 }
 
+.candidate-cv-modal {
+  width: clamp(320px, 80vw, 1280px);
+  max-width: 80vw;
+  height: 80vh;
+  max-height: 80vh;
+}
+
 .candidate-cv-modal__body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 320px;
+  flex: 1;
+  min-height: 0;
 }
 
 .candidate-cv-modal__message {
@@ -323,7 +331,8 @@
 
 .candidate-cv-modal__iframe {
   width: 100%;
-  min-height: 60vh;
+  flex: 1;
+  min-height: 0;
   border: none;
   border-radius: 12px;
   background: #f8fafc;
