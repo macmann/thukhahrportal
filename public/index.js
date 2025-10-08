@@ -110,12 +110,61 @@ let recruitmentCandidateSearchQuery = '';
 let recruitmentCandidateSearchLoading = false;
 let recruitmentCandidateSearchError = null;
 const candidateCvPreviewUrls = new Map();
+const candidateDetailsCache = new Map();
 let candidateCvModalCandidateId = null;
 let currentDrawerFields = [];
 let hireModalState = { candidateId: null, select: null, previousStatus: null, candidate: null };
 let currentHireFields = [];
 let profileData = null;
 let profileLoading = null;
+
+function normalizeCandidateId(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function cacheCandidateDetails(candidate) {
+  if (!candidate || candidate.id == null) return null;
+  const id = normalizeCandidateId(candidate.id);
+  if (id == null) return null;
+  const existing = candidateDetailsCache.get(id);
+  if (existing) {
+    Object.assign(existing, candidate);
+    return existing;
+  }
+  const stored = { ...candidate, id };
+  candidateDetailsCache.set(id, stored);
+  return stored;
+}
+
+function getCachedCandidate(id) {
+  const normalized = normalizeCandidateId(id);
+  if (normalized == null) return null;
+  return recruitmentCandidates.find(candidate => candidate.id == normalized) || candidateDetailsCache.get(normalized) || null;
+}
+
+function adaptSearchResultToCandidate(result) {
+  if (!result || result.id == null) return null;
+  const id = normalizeCandidateId(result.id);
+  if (id == null) return null;
+  const filename = result.cvFilename || result.cv?.filename || 'CV Document';
+  const lower = filename.toLowerCase();
+  const contentType = result.cvContentType || result.cv?.contentType || (lower.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+  const candidate = {
+    id,
+    positionId: result.positionId != null ? normalizeCandidateId(result.positionId) : null,
+    name: result.name || '',
+    contact: result.contact || '',
+    status: result.status || 'New',
+    createdAt: result.createdAt || null,
+    updatedAt: result.updatedAt || null,
+    cv: result.hasCv
+      ? { filename, contentType }
+      : null,
+    commentCount: typeof result.commentCount === 'number' ? result.commentCount : null
+  };
+  return candidate;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   setupTabGroupMenus();
@@ -1216,6 +1265,7 @@ async function loadRecruitmentCandidates(positionId) {
   }
   const data = await getJSON(`/recruitment/candidates?positionId=${encodeURIComponent(positionId)}`);
   recruitmentCandidates = Array.isArray(data) ? data : [];
+  recruitmentCandidates.forEach(cacheCandidateDetails);
   if (recruitmentEditingCandidateId) {
     const editingCandidate = recruitmentCandidates.find(c => c.id == recruitmentEditingCandidateId);
     if (editingCandidate) {
@@ -1614,7 +1664,10 @@ function onCandidateSearchResultsClick(ev) {
   if (!button) return;
   const id = button.getAttribute('data-candidate-id');
   if (!id) return;
-  openCandidateCvModal(id);
+  const result = recruitmentCandidateSearchResults.find(candidate => String(candidate.id) === String(id));
+  const adapted = adaptSearchResultToCandidate(result);
+  if (adapted) cacheCandidateDetails(adapted);
+  openCandidateDetailsModal(id);
 }
 
 async function onCandidateStatusChange(ev) {
@@ -1684,8 +1737,10 @@ async function downloadCandidateCv(id) {
   if (!res.ok) throw new Error('Failed');
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
+  const normalizedId = normalizeCandidateId(id);
   const candidate = recruitmentCandidates.find(c => c.id == id) ||
-    recruitmentCandidateSearchResults.find(c => String(c.id) === String(id));
+    recruitmentCandidateSearchResults.find(c => String(c.id) === String(id)) ||
+    (normalizedId != null ? candidateDetailsCache.get(normalizedId) : null);
   const filename = candidate?.cv?.filename || candidate?.cvFilename || `candidate-${id}`;
   const link = document.createElement('a');
   link.href = url;
@@ -1817,9 +1872,13 @@ async function loadCandidateComments(candidateId) {
   }
   if (recruitmentActiveCommentCandidateId !== candidateId) return;
   recruitmentCandidateComments.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-  const candidate = recruitmentCandidates.find(c => c.id == candidateId);
+  const normalizedId = normalizeCandidateId(candidateId);
+  const candidate = normalizedId != null
+    ? recruitmentCandidates.find(c => c.id == normalizedId) || candidateDetailsCache.get(normalizedId)
+    : null;
   if (candidate) {
     candidate.commentCount = recruitmentCandidateComments.length;
+    cacheCandidateDetails(candidate);
   }
   renderCandidateComments();
   updateCandidateCommentsCount(recruitmentCandidateComments.length, candidate);
@@ -1827,14 +1886,18 @@ async function loadCandidateComments(candidateId) {
 }
 
 function openCandidateDetailsModal(candidateId) {
-  const candidate = recruitmentCandidates.find(c => c.id == candidateId);
-  if (!candidate) return;
-  recruitmentActiveDetailsCandidateId = candidateId;
-  recruitmentActiveCommentCandidateId = candidateId;
+  const candidate = getCachedCandidate(candidateId);
+  if (!candidate) {
+    alert('Unable to load candidate details right now. Please try again.');
+    return;
+  }
+  cacheCandidateDetails(candidate);
+  recruitmentActiveDetailsCandidateId = candidate.id;
+  recruitmentActiveCommentCandidateId = candidate.id;
   prepareCandidateCommentsSection(candidate);
   setCommentFormEnabled(true);
   populateCandidateDetails(candidate);
-  loadCandidateComments(candidateId);
+  loadCandidateComments(candidate.id);
   loadCandidateCvPreview(candidate);
   const modal = document.getElementById('candidateDetailsModal');
   if (modal) modal.classList.remove('hidden');
@@ -1902,7 +1965,7 @@ function populateCandidateDetails(candidate) {
 
 function refreshCandidateDetailsModal() {
   if (!recruitmentActiveDetailsCandidateId) return;
-  const candidate = recruitmentCandidates.find(c => c.id == recruitmentActiveDetailsCandidateId);
+  const candidate = getCachedCandidate(recruitmentActiveDetailsCandidateId);
   if (!candidate) {
     closeCandidateDetailsModal();
     return;
@@ -2204,9 +2267,24 @@ async function onCommentSubmit(ev) {
     recruitmentCandidateComments.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
   }
   if (typeof data?.commentCount === 'number') {
-    const candidate = recruitmentCandidates.find(c => c.id == candidateId);
-    if (candidate) candidate.commentCount = data.commentCount;
-    renderRecruitmentCandidates();
+    const normalizedId = normalizeCandidateId(candidateId);
+    let shouldRender = false;
+    if (normalizedId != null) {
+      const candidate = recruitmentCandidates.find(c => c.id == normalizedId);
+      if (candidate) {
+        candidate.commentCount = data.commentCount;
+        cacheCandidateDetails(candidate);
+        shouldRender = true;
+      }
+      const cached = candidateDetailsCache.get(normalizedId);
+      if (cached && cached !== candidate) {
+        cached.commentCount = data.commentCount;
+        cacheCandidateDetails(cached);
+      }
+    }
+    if (shouldRender) {
+      renderRecruitmentCandidates();
+    }
   }
   textarea.value = '';
   recruitmentEditingCommentId = null;
