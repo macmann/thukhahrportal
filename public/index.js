@@ -1516,13 +1516,41 @@ function renderCandidateSearchResults() {
     const status = result?.status
       ? `<div class="candidate-search-item__status">${escapeHtml(result.status)}</div>`
       : '<div class="candidate-search-item__status candidate-search-item__status--muted">No status</div>';
-    const metaParts = [];
-    if (result?.contact) metaParts.push(escapeHtml(result.contact));
-    if (result?.positionTitle) metaParts.push(escapeHtml(result.positionTitle));
+    const detailItems = [];
+    if (result?.contact) {
+      detailItems.push({
+        label: 'Contact',
+        value: escapeHtml(result.contact)
+      });
+    }
+    if (result?.positionTitle) {
+      detailItems.push({
+        label: 'Position',
+        value: escapeHtml(result.positionTitle)
+      });
+    }
     const applied = formatRecruitmentDate(result?.createdAt);
-    if (applied) metaParts.push(`Applied ${escapeHtml(applied)}`);
-    const meta = metaParts.length
-      ? `<div class="candidate-search-item__meta">${metaParts.map(part => `<span>${part}</span>`).join('')}</div>`
+    if (applied) {
+      detailItems.push({
+        label: 'Applied',
+        value: escapeHtml(applied)
+      });
+    }
+    const details = detailItems.length
+      ? `
+        <div class="candidate-search-item__details">
+          ${detailItems
+            .map(
+              item => `
+                <div class="candidate-search-item__detail">
+                  <div class="candidate-search-item__detail-label">${item.label}</div>
+                  <div class="candidate-search-item__detail-value">${item.value}</div>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      `
       : '';
     const hasCv = !!result?.hasCv;
     const actions = hasCv
@@ -1532,7 +1560,7 @@ function renderCandidateSearchResults() {
       <div class="candidate-search-item">
         <div class="candidate-search-item__content">
           <div class="candidate-search-item__name">${name}</div>
-          ${meta}
+          ${details}
         </div>
         <div class="candidate-search-item__actions">
           ${status}
