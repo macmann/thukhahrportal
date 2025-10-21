@@ -117,6 +117,10 @@ let hireModalState = { candidateId: null, select: null, previousStatus: null, ca
 let currentHireFields = [];
 let profileData = null;
 let profileLoading = null;
+let emailSettings = null;
+let emailSettingsLoaded = false;
+let emailSettingsLoading = null;
+let emailSettingsHasPassword = false;
 
 function normalizeCandidateId(value) {
   const num = Number(value);
@@ -346,6 +350,7 @@ function showPanel(name) {
     if (settingsBtn) settingsBtn.classList.add('active-tab');
     if (currentUser?.role === 'manager') {
       loadHolidays();
+      loadEmailSettingsConfig();
     }
   }
 }
@@ -873,6 +878,261 @@ async function onHolidayListClick(ev) {
   } catch (err) {
     console.error('Failed to delete holiday', err);
     alert(err.message || 'Failed to delete holiday.');
+  }
+}
+
+function setEmailSettingsStatus(message, type = 'info') {
+  const statusEl = document.getElementById('emailSettingsStatus');
+  if (!statusEl) return;
+  statusEl.textContent = message || '';
+  statusEl.classList.remove('settings-status--error', 'settings-status--success');
+  if (!message) {
+    statusEl.classList.add('text-muted');
+    return;
+  }
+  statusEl.classList.remove('text-muted');
+  if (type === 'error') {
+    statusEl.classList.add('settings-status--error');
+  } else if (type === 'success') {
+    statusEl.classList.add('settings-status--success');
+  }
+}
+
+function rememberCustomEmailSettings() {
+  const form = document.getElementById('emailSettingsForm');
+  const providerSelect = document.getElementById('emailProvider');
+  if (!form || !providerSelect || providerSelect.value === 'office365') return;
+  const hostInput = document.getElementById('emailHost');
+  const portInput = document.getElementById('emailPort');
+  const secureCheckbox = document.getElementById('emailSecure');
+  if (hostInput) form.dataset.customHost = hostInput.value;
+  if (portInput) form.dataset.customPort = portInput.value;
+  if (secureCheckbox) form.dataset.customSecure = secureCheckbox.checked ? 'true' : 'false';
+}
+
+function updateEmailSettingsFormState() {
+  const form = document.getElementById('emailSettingsForm');
+  const providerSelect = document.getElementById('emailProvider');
+  const hostInput = document.getElementById('emailHost');
+  const portInput = document.getElementById('emailPort');
+  const secureCheckbox = document.getElementById('emailSecure');
+  if (!form || !providerSelect) return;
+  const isOffice = providerSelect.value === 'office365';
+  const previousProvider = form.dataset.provider || 'custom';
+
+  if (isOffice) {
+    if (hostInput) {
+      if (previousProvider !== 'office365') {
+        form.dataset.customHost = hostInput.value;
+      }
+      hostInput.value = 'smtp.office365.com';
+      hostInput.setAttribute('disabled', '');
+    }
+    if (portInput) {
+      if (previousProvider !== 'office365') {
+        form.dataset.customPort = portInput.value;
+      }
+      portInput.value = '587';
+      portInput.setAttribute('disabled', '');
+    }
+    if (secureCheckbox) {
+      if (previousProvider !== 'office365') {
+        form.dataset.customSecure = secureCheckbox.checked ? 'true' : 'false';
+      }
+      secureCheckbox.checked = false;
+      secureCheckbox.setAttribute('disabled', '');
+    }
+  } else {
+    if (hostInput) {
+      hostInput.removeAttribute('disabled');
+      if (previousProvider === 'office365') {
+        hostInput.value = form.dataset.customHost || '';
+      }
+    }
+    if (portInput) {
+      portInput.removeAttribute('disabled');
+      if (previousProvider === 'office365') {
+        portInput.value = form.dataset.customPort || '';
+      }
+    }
+    if (secureCheckbox) {
+      secureCheckbox.removeAttribute('disabled');
+      if (previousProvider === 'office365') {
+        secureCheckbox.checked = form.dataset.customSecure === 'true';
+      }
+    }
+    rememberCustomEmailSettings();
+  }
+
+  form.dataset.provider = isOffice ? 'office365' : 'custom';
+}
+
+function onEmailProviderChange() {
+  const form = document.getElementById('emailSettingsForm');
+  const providerSelect = document.getElementById('emailProvider');
+  if (!form) return;
+  const previousProvider = form.dataset.provider || 'custom';
+  if (previousProvider !== 'office365') {
+    rememberCustomEmailSettings();
+  }
+  updateEmailSettingsFormState();
+  if (providerSelect) {
+    const message = providerSelect.value === 'office365'
+      ? 'Applied Microsoft 365 defaults. Save to confirm the change.'
+      : 'Custom SMTP selected. Update the fields and save to apply.';
+    setEmailSettingsStatus(message);
+  }
+}
+
+function renderEmailSettingsForm() {
+  const form = document.getElementById('emailSettingsForm');
+  if (!form) return;
+  const enabledInput = document.getElementById('emailEnabled');
+  const providerSelect = document.getElementById('emailProvider');
+  const hostInput = document.getElementById('emailHost');
+  const portInput = document.getElementById('emailPort');
+  const secureCheckbox = document.getElementById('emailSecure');
+  const userInput = document.getElementById('emailUser');
+  const fromInput = document.getElementById('emailFrom');
+  const replyInput = document.getElementById('emailReplyTo');
+  const passwordInput = document.getElementById('emailPassword');
+  const help = document.getElementById('emailPasswordHelp');
+  const settings = emailSettings || {};
+  emailSettingsHasPassword = Boolean(settings.hasPassword);
+  if (enabledInput) enabledInput.checked = Boolean(settings.enabled);
+  const provider = settings.provider === 'office365' ? 'office365' : 'custom';
+  if (providerSelect) providerSelect.value = provider;
+  if (hostInput) hostInput.value = settings.host || (provider === 'office365' ? 'smtp.office365.com' : '');
+  if (portInput) portInput.value = settings.port != null ? settings.port : (provider === 'office365' ? 587 : '');
+  if (secureCheckbox) secureCheckbox.checked = Boolean(settings.secure);
+  if (userInput) userInput.value = settings.user || '';
+  if (fromInput) fromInput.value = settings.from || '';
+  if (replyInput) replyInput.value = settings.replyTo || '';
+  if (passwordInput) {
+    passwordInput.value = '';
+    passwordInput.dataset.dirty = 'false';
+  }
+  if (help) {
+    help.textContent = emailSettingsHasPassword
+      ? 'Password is hidden. Enter a new value to update it.'
+      : 'Provide the SMTP account password.';
+  }
+  if (provider !== 'office365') {
+    rememberCustomEmailSettings();
+  }
+  updateEmailSettingsFormState();
+}
+
+async function fetchEmailSettings({ force = false } = {}) {
+  if (!force && emailSettingsLoaded && !emailSettingsLoading) {
+    return { settings: emailSettings, hasPassword: emailSettingsHasPassword };
+  }
+  if (!force && emailSettingsLoading) {
+    return emailSettingsLoading;
+  }
+  const request = (async () => {
+    try {
+      const res = await apiFetch('/settings/email');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load email settings.');
+      }
+      emailSettings = { ...data };
+      emailSettingsHasPassword = Boolean(data.hasPassword);
+      emailSettingsLoaded = true;
+      return { settings: emailSettings, hasPassword: emailSettingsHasPassword };
+    } catch (err) {
+      emailSettingsLoaded = false;
+      throw err;
+    } finally {
+      emailSettingsLoading = null;
+    }
+  })();
+  emailSettingsLoading = request;
+  return request;
+}
+
+async function loadEmailSettingsConfig({ force = false } = {}) {
+  if (!currentUser || currentUser.role !== 'manager') return;
+  if (!force && emailSettingsLoaded) {
+    renderEmailSettingsForm();
+    const statusMessage = emailSettings?.enabled
+      ? 'Email notifications are enabled.'
+      : 'Email notifications are currently disabled.';
+    setEmailSettingsStatus(statusMessage);
+    return;
+  }
+  setEmailSettingsStatus('Loading email settings...');
+  try {
+    const result = await fetchEmailSettings({ force });
+    emailSettings = result.settings;
+    emailSettingsHasPassword = Boolean(result.hasPassword);
+    renderEmailSettingsForm();
+    const statusMessage = emailSettings?.enabled
+      ? 'Email notifications are enabled.'
+      : 'Email notifications are currently disabled.';
+    setEmailSettingsStatus(statusMessage);
+  } catch (err) {
+    console.error('Failed to load email settings', err);
+    setEmailSettingsStatus(err.message || 'Unable to load email settings.', 'error');
+  }
+}
+
+async function onEmailSettingsSubmit(ev) {
+  ev.preventDefault();
+  if (!currentUser || currentUser.role !== 'manager') return;
+  const form = ev.currentTarget;
+  const submitBtn = form?.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  setEmailSettingsStatus('Saving email settings...');
+  try {
+    const providerSelect = document.getElementById('emailProvider');
+    const passwordInput = document.getElementById('emailPassword');
+    const payload = {
+      enabled: document.getElementById('emailEnabled')?.checked ?? false,
+      provider: providerSelect && providerSelect.value === 'office365' ? 'office365' : 'custom',
+      host: document.getElementById('emailHost')?.value?.trim() || '',
+      port: Number(document.getElementById('emailPort')?.value || 0),
+      secure: document.getElementById('emailSecure')?.checked || false,
+      user: document.getElementById('emailUser')?.value?.trim() || '',
+      from: document.getElementById('emailFrom')?.value?.trim() || '',
+      replyTo: document.getElementById('emailReplyTo')?.value?.trim() || '',
+      updatePassword: passwordInput?.dataset?.dirty === 'true',
+      password: passwordInput?.value || ''
+    };
+    if (!payload.updatePassword) {
+      delete payload.password;
+    }
+    const res = await apiFetch('/settings/email', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to save email settings.');
+    }
+    emailSettings = { ...data };
+    emailSettingsHasPassword = Boolean(data.hasPassword);
+    emailSettingsLoaded = true;
+    renderEmailSettingsForm();
+    setEmailSettingsStatus('Email settings saved successfully.', 'success');
+  } catch (err) {
+    console.error('Failed to save email settings', err);
+    setEmailSettingsStatus(err.message || 'Unable to save email settings.', 'error');
+  } finally {
+    const passwordInput = document.getElementById('emailPassword');
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.dataset.dirty = 'false';
+      const help = document.getElementById('emailPasswordHelp');
+      if (help) {
+        help.textContent = emailSettingsHasPassword
+          ? 'Password is hidden. Enter a new value to update it.'
+          : 'Provide the SMTP account password.';
+      }
+    }
+    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
@@ -2396,6 +2656,51 @@ async function init() {
   showPanel(defaultPanel);
 
   document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
+
+  const emailForm = document.getElementById('emailSettingsForm');
+  if (emailForm) emailForm.addEventListener('submit', onEmailSettingsSubmit);
+  const emailProviderSelect = document.getElementById('emailProvider');
+  if (emailProviderSelect) {
+    emailProviderSelect.addEventListener('change', onEmailProviderChange);
+  }
+  const emailEnabledToggle = document.getElementById('emailEnabled');
+  if (emailEnabledToggle) {
+    emailEnabledToggle.addEventListener('change', () => {
+      updateEmailSettingsFormState();
+      const message = emailEnabledToggle.checked
+        ? 'Email notifications will be enabled after you save.'
+        : 'Email notifications will be disabled after you save.';
+      setEmailSettingsStatus(message);
+    });
+  }
+  const emailPasswordInput = document.getElementById('emailPassword');
+  if (emailPasswordInput) {
+    emailPasswordInput.addEventListener('input', () => {
+      emailPasswordInput.dataset.dirty = 'true';
+      const help = document.getElementById('emailPasswordHelp');
+      if (help) {
+        help.textContent = emailPasswordInput.value
+          ? 'Password will be updated when you save.'
+          : emailSettingsHasPassword
+            ? 'Password is hidden. Enter a new value to update it.'
+            : 'Provide the SMTP account password.';
+      }
+    });
+  }
+  ['emailHost', 'emailPort'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.addEventListener('input', () => {
+        rememberCustomEmailSettings();
+      });
+    }
+  });
+  const emailSecureCheckbox = document.getElementById('emailSecure');
+  if (emailSecureCheckbox) {
+    emailSecureCheckbox.addEventListener('change', () => {
+      rememberCustomEmailSettings();
+    });
+  }
 
   const empSearchInput = document.getElementById('empSearchInput');
   if (empSearchInput) {

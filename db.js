@@ -86,19 +86,60 @@ async function syncCollection(name, docs = []) {
   }
 }
 
+async function syncSettings(settings = {}) {
+  await init();
+  const collection = database.collection('settings');
+  const entries = Object.entries(settings || {}).filter(([key]) => key);
+
+  if (!entries.length) {
+    await collection.deleteMany({});
+    return;
+  }
+
+  const operations = entries.map(([key, value]) => ({
+    updateOne: {
+      filter: { _id: key },
+      update: { $set: { value } },
+      upsert: true
+    }
+  }));
+
+  if (operations.length) {
+    await collection.bulkWrite(operations, { ordered: true });
+  }
+
+  const keepIds = entries.map(([key]) => key);
+  await collection.deleteMany({ _id: { $nin: keepIds } });
+}
+
 const db = {
   data: null,
   async read() {
     await init();
-    const [employees, applications, users, positions, candidates, holidays] = await Promise.all([
+    const [
+      employees,
+      applications,
+      users,
+      positions,
+      candidates,
+      holidays,
+      settingsDocs
+    ] = await Promise.all([
       database.collection('employees').find().toArray(),
       database.collection('applications').find().toArray(),
       database.collection('users').find().toArray(),
       database.collection('positions').find().toArray(),
       database.collection('candidates').find().toArray(),
-      database.collection('holidays').find().toArray()
+      database.collection('holidays').find().toArray(),
+      database.collection('settings').find().toArray()
     ]);
-    this.data = { employees, applications, users, positions, candidates, holidays };
+    const settings = {};
+    settingsDocs.forEach(doc => {
+      if (!doc || (!doc._id && !doc.key)) return;
+      const key = doc._id || doc.key;
+      settings[key] = doc.value;
+    });
+    this.data = { employees, applications, users, positions, candidates, holidays, settings };
   },
   async write() {
     if (!this.data) return;
@@ -109,7 +150,8 @@ const db = {
       users = [],
       positions = [],
       candidates = [],
-      holidays = []
+      holidays = [],
+      settings = {}
     } = this.data;
 
     await Promise.all([
@@ -118,7 +160,8 @@ const db = {
       syncCollection('users', users),
       syncCollection('positions', positions),
       syncCollection('candidates', candidates),
-      syncCollection('holidays', holidays)
+      syncCollection('holidays', holidays),
+      syncSettings(settings)
     ]);
   }
 };
