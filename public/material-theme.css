@@ -1700,8 +1700,50 @@ body {
   min-width: 200px;
 }
 
+.settings-form__fields--compact {
+  flex: 0 1 140px;
+  min-width: 120px;
+}
+
+.settings-form__toggle {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-form__toggle--inline {
+  flex: 0 1 auto;
+  align-self: center;
+}
+
+.settings-form__toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.settings-form__help {
+  flex: 1 1 100%;
+  font-size: 0.9rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
 .settings-form__submit {
   align-self: flex-end;
+}
+
+.settings-status {
+  margin-top: 12px;
+  font-size: 0.92rem;
+}
+
+.settings-status--error {
+  color: #b3261e;
+}
+
+.settings-status--success {
+  color: #0b6b0b;
 }
 
 .holiday-list {

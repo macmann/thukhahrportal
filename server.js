@@ -8,7 +8,7 @@ const nodemailer = require('nodemailer');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
-const { db, init } = require('./db');
+const { db, init, getDatabase } = require('./db');
 const { parse } = require('csv-parse/sync');
 const {
   ensureIndexes: ensurePairingIndexes,
@@ -127,30 +127,139 @@ const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || '';
 const MS_TENANT = process.env.MS_TENANT || 'common';
 const MS_REDIRECT_URI = process.env.MS_REDIRECT_URI ||
   'http://localhost:3000/auth/microsoft/callback';
-
-
-
-
 // ---- EMAIL SETUP ----
-const mailTransporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 587),
-  secure: process.env.SMTP_SECURE === 'true',
-  auth: process.env.SMTP_USER ? {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  } : undefined
-});
+const EMAIL_SETTINGS_CACHE_MS = 60 * 1000;
+
+function getEnvEmailSettings() {
+  const host = process.env.SMTP_HOST || '';
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure = process.env.SMTP_SECURE === 'true';
+  const user = process.env.SMTP_USER || '';
+  const pass = process.env.SMTP_PASS || '';
+  const from = process.env.SMTP_FROM || user;
+  const replyTo = process.env.SMTP_REPLY_TO || '';
+  return {
+    enabled: Boolean(host),
+    provider: host === 'smtp.office365.com' ? 'office365' : 'custom',
+    host,
+    port: Number.isFinite(port) && port > 0 ? port : 587,
+    secure,
+    user,
+    pass,
+    from,
+    replyTo
+  };
+}
+
+function normalizeEmailSettings(raw) {
+  const defaults = {
+    enabled: false,
+    provider: 'custom',
+    host: '',
+    port: 587,
+    secure: false,
+    user: '',
+    pass: '',
+    from: '',
+    replyTo: ''
+  };
+  const envSettings = getEnvEmailSettings();
+  const result = { ...defaults, ...envSettings };
+  if (raw && typeof raw === 'object') {
+    Object.entries(raw).forEach(([key, value]) => {
+      if (value === undefined) return;
+      result[key] = value;
+    });
+  }
+  result.enabled = Boolean(result.enabled && result.host);
+  result.host = typeof result.host === 'string' ? result.host.trim() : '';
+  const numericPort = Number(result.port);
+  result.port = Number.isFinite(numericPort) && numericPort > 0 ? numericPort : 587;
+  result.secure = result.secure === true || result.secure === 'true';
+  result.user = typeof result.user === 'string' ? result.user.trim() : '';
+  result.from = typeof result.from === 'string' && result.from.trim()
+    ? result.from.trim()
+    : result.user || '';
+  result.replyTo = typeof result.replyTo === 'string' ? result.replyTo.trim() : '';
+  if (!result.host) {
+    result.enabled = false;
+  }
+  if (result.host === 'smtp.office365.com') {
+    result.provider = 'office365';
+  } else if (!result.provider) {
+    result.provider = 'custom';
+  }
+  return result;
+}
+
+let emailSettingsCache = { config: null, loadedAt: 0 };
+let emailTransporterCache = { transporter: null, signature: null };
+
+async function loadEmailSettings({ force = false } = {}) {
+  const now = Date.now();
+  if (
+    !force &&
+    emailSettingsCache.config &&
+    now - emailSettingsCache.loadedAt < EMAIL_SETTINGS_CACHE_MS
+  ) {
+    return emailSettingsCache.config;
+  }
+
+  await init();
+  const database = getDatabase();
+  const doc = await database.collection('settings').findOne({ _id: 'email' });
+  const stored = doc && doc.value && typeof doc.value === 'object' ? doc.value : null;
+  const config = normalizeEmailSettings(stored);
+  emailSettingsCache = { config, loadedAt: now };
+  return config;
+}
+
+function transporterSignature(config) {
+  if (!config) return '';
+  return [config.host, config.port, config.secure, config.user, Boolean(config.pass)].join('|');
+}
+
+async function getMailTransporter({ config: providedConfig, forceReload = false } = {}) {
+  const config = providedConfig || (await loadEmailSettings({ force: forceReload }));
+  if (!config.enabled || !config.host) {
+    return null;
+  }
+  const signature = transporterSignature(config);
+  if (!forceReload && emailTransporterCache.signature === signature && emailTransporterCache.transporter) {
+    return emailTransporterCache.transporter;
+  }
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: Boolean(config.secure),
+    auth: config.user
+      ? {
+          user: config.user,
+          pass: config.pass
+        }
+      : undefined
+  });
+  emailTransporterCache = { transporter, signature };
+  return transporter;
+}
 
 async function sendEmail(to, subject, text) {
-  if (!to || !process.env.SMTP_HOST) return;
+  if (!to) return;
   try {
-    await mailTransporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    const config = await loadEmailSettings();
+    if (!config.enabled || !config.host) return;
+    const transporter = await getMailTransporter({ config });
+    if (!transporter) return;
+    const message = {
+      from: config.from || config.user,
       to,
       subject,
       text
-    });
+    };
+    if (config.replyTo) {
+      message.replyTo = config.replyTo;
+    }
+    await transporter.sendMail(message);
   } catch (err) {
     console.error('Failed to send email', err);
   }
@@ -1891,6 +2000,81 @@ init().then(async () => {
       }
     }
   );
+
+  // ---- EMAIL SETTINGS ----
+  app.get('/settings/email', authRequired, managerOnly, async (req, res) => {
+    try {
+      const config = await loadEmailSettings({ force: true });
+      const { pass, ...rest } = config;
+      res.json({ ...rest, hasPassword: Boolean(pass) });
+    } catch (err) {
+      console.error('Failed to load email settings', err);
+      res.status(500).json({ error: 'Unable to load email settings.' });
+    }
+  });
+
+  app.put('/settings/email', authRequired, managerOnly, async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const providerRaw = typeof payload.provider === 'string' ? payload.provider.trim().toLowerCase() : 'custom';
+      const provider = providerRaw === 'office365' ? 'office365' : 'custom';
+      let host = typeof payload.host === 'string' ? payload.host.trim() : '';
+      let secure = payload.secure === true || payload.secure === 'true';
+      let port = Number(payload.port);
+      const enabled = payload.enabled !== false;
+      if (provider === 'office365') {
+        host = 'smtp.office365.com';
+        port = 587;
+        secure = false;
+      }
+      if (!Number.isFinite(port) || port <= 0) {
+        port = secure ? 465 : 587;
+      }
+      if (enabled && !host) {
+        return res.status(400).json({ error: 'SMTP host is required when email notifications are enabled.' });
+      }
+      const user = typeof payload.user === 'string' ? payload.user.trim() : '';
+      const from = typeof payload.from === 'string' ? payload.from.trim() : '';
+      const replyTo = typeof payload.replyTo === 'string' ? payload.replyTo.trim() : '';
+      const updatePassword = payload.updatePassword === true;
+      const incomingPassword = typeof payload.password === 'string' ? payload.password : '';
+
+      await db.read();
+      db.data.settings = db.data.settings && typeof db.data.settings === 'object' ? db.data.settings : {};
+      const existing = db.data.settings.email && typeof db.data.settings.email === 'object'
+        ? db.data.settings.email
+        : {};
+      let pass = existing.pass || '';
+      if (updatePassword) {
+        pass = incomingPassword;
+      }
+
+      const storedConfig = {
+        enabled: Boolean(enabled && host),
+        provider,
+        host,
+        port,
+        secure: Boolean(secure),
+        user,
+        pass,
+        from: from || user,
+        replyTo
+      };
+
+      db.data.settings.email = storedConfig;
+      await db.write();
+
+      const normalized = normalizeEmailSettings(storedConfig);
+      emailSettingsCache = { config: normalized, loadedAt: Date.now() };
+      emailTransporterCache = { transporter: null, signature: null };
+
+      const { pass: _, ...safe } = normalized;
+      res.json({ ...safe, hasPassword: Boolean(storedConfig.pass) });
+    } catch (err) {
+      console.error('Failed to save email settings', err);
+      res.status(500).json({ error: 'Unable to save email settings.' });
+    }
+  });
 
   // ---- HOLIDAY CONFIGURATION ----
   app.get('/holidays', authRequired, async (req, res) => {

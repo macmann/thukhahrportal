@@ -886,6 +886,82 @@
 
         <div class="md-card">
           <div class="card-title">
+            <span class="material-symbols-rounded">mail</span>
+            Email Notifications
+          </div>
+          <p class="card-subtitle">Configure SMTP details for leave updates. Includes quick setup for Microsoft 365 / Office 365 mailboxes.</p>
+          <form id="emailSettingsForm" class="settings-form">
+            <div class="settings-form__toggle">
+              <input type="checkbox" id="emailEnabled">
+              <label for="emailEnabled" class="md-label">Enable email notifications</label>
+            </div>
+            <div class="settings-form__fields">
+              <label class="md-label" for="emailProvider">Email provider</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">alternate_email</span>
+                <select id="emailProvider" class="md-input">
+                  <option value="custom">Custom SMTP</option>
+                  <option value="office365">Microsoft 365 / Office 365</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-form__fields">
+              <label class="md-label" for="emailHost">SMTP host</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">dns</span>
+                <input type="text" id="emailHost" class="md-input" placeholder="smtp.example.com">
+              </div>
+            </div>
+            <div class="settings-form__fields settings-form__fields--compact">
+              <label class="md-label" for="emailPort">Port</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">123</span>
+                <input type="number" id="emailPort" class="md-input" min="1" max="65535" step="1" placeholder="587">
+              </div>
+            </div>
+            <div class="settings-form__toggle settings-form__toggle--inline">
+              <input type="checkbox" id="emailSecure">
+              <label for="emailSecure" class="md-label">Use SSL/TLS (port 465)</label>
+            </div>
+            <div class="settings-form__fields">
+              <label class="md-label" for="emailUser">SMTP username</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">person</span>
+                <input type="text" id="emailUser" class="md-input" placeholder="user@example.com">
+              </div>
+            </div>
+            <div class="settings-form__fields">
+              <label class="md-label" for="emailPassword">SMTP password</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">lock</span>
+                <input type="password" id="emailPassword" class="md-input" autocomplete="new-password" placeholder="Enter password">
+              </div>
+            </div>
+            <div class="settings-form__fields">
+              <label class="md-label" for="emailFrom">From address</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">outgoing_mail</span>
+                <input type="email" id="emailFrom" class="md-input" placeholder="notifications@example.com">
+              </div>
+            </div>
+            <div class="settings-form__fields">
+              <label class="md-label" for="emailReplyTo">Reply-to (optional)</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">reply</span>
+                <input type="email" id="emailReplyTo" class="md-input" placeholder="hr@example.com">
+              </div>
+            </div>
+            <div class="settings-form__help" id="emailPasswordHelp">Password is stored securely. Leave blank to keep the current password.</div>
+            <button type="submit" class="md-button md-button--filled md-button--small settings-form__submit">
+              <span class="material-symbols-rounded">save</span>
+              Save email settings
+            </button>
+          </form>
+          <div id="emailSettingsStatus" class="settings-status text-muted"></div>
+        </div>
+
+        <div class="md-card">
+          <div class="card-title">
             <span class="material-symbols-rounded">terminal</span>
             API Testing Tools
           </div>
