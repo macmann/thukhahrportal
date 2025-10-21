@@ -138,6 +138,13 @@ function getEnvEmailSettings() {
   const pass = process.env.SMTP_PASS || '';
   const from = process.env.SMTP_FROM || user;
   const replyTo = process.env.SMTP_REPLY_TO || '';
+  const recipientsEnv = process.env.SMTP_RECIPIENTS || '';
+  const recipients = recipientsEnv
+    ? recipientsEnv
+        .split(/[,;]+/)
+        .map(value => value && value.trim())
+        .filter(Boolean)
+    : [];
   return {
     enabled: Boolean(host),
     provider: host === 'smtp.office365.com' ? 'office365' : 'custom',
@@ -147,7 +154,8 @@ function getEnvEmailSettings() {
     user,
     pass,
     from,
-    replyTo
+    replyTo,
+    recipients
   };
 }
 
@@ -161,7 +169,8 @@ function normalizeEmailSettings(raw) {
     user: '',
     pass: '',
     from: '',
-    replyTo: ''
+    replyTo: '',
+    recipients: []
   };
   const envSettings = getEnvEmailSettings();
   const result = { ...defaults, ...envSettings };
@@ -181,6 +190,22 @@ function normalizeEmailSettings(raw) {
     ? result.from.trim()
     : result.user || '';
   result.replyTo = typeof result.replyTo === 'string' ? result.replyTo.trim() : '';
+  const recipientValues = Array.isArray(result.recipients)
+    ? result.recipients
+    : typeof result.recipients === 'string'
+      ? result.recipients.split(/[,;]+/)
+      : [];
+  const recipientMap = new Map();
+  recipientValues.forEach(value => {
+    if (value === undefined || value === null) return;
+    const trimmed = typeof value === 'string' ? value.trim() : String(value || '').trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    if (!recipientMap.has(lower)) {
+      recipientMap.set(lower, trimmed);
+    }
+  });
+  result.recipients = Array.from(recipientMap.values());
   if (!result.host) {
     result.enabled = false;
   }
@@ -244,7 +269,24 @@ async function getMailTransporter({ config: providedConfig, forceReload = false 
 }
 
 async function sendEmail(to, subject, text) {
-  if (!to) return;
+  const recipientValues = Array.isArray(to)
+    ? to
+    : typeof to === 'string'
+      ? to.split(/[,;]+/)
+      : to
+        ? [to]
+        : [];
+  const recipientMap = new Map();
+  recipientValues.forEach(value => {
+    if (value === undefined || value === null) return;
+    const trimmed = typeof value === 'string' ? value.trim() : String(value || '').trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    if (!recipientMap.has(lower)) {
+      recipientMap.set(lower, trimmed);
+    }
+  });
+  if (!recipientMap.size) return;
   try {
     const config = await loadEmailSettings();
     if (!config.enabled || !config.host) return;
@@ -252,7 +294,7 @@ async function sendEmail(to, subject, text) {
     if (!transporter) return;
     const message = {
       from: config.from || config.user,
-      to,
+      to: Array.from(recipientMap.values()).join(', '),
       subject,
       text
     };
@@ -317,6 +359,71 @@ function getEmpRole(emp) {
   const key = findEmployeeKey(emp, normalized => normalized === 'role' || normalized.includes('role'));
   const value = key ? String(emp[key] || '').trim().toLowerCase() : '';
   return value === 'manager' ? 'manager' : 'employee';
+}
+
+function buildRecipientOptions(data, extras = []) {
+  const options = new Map();
+  const employees = Array.isArray(data?.employees) ? data.employees : [];
+  const users = Array.isArray(data?.users) ? data.users : [];
+
+  const addOption = (email, name = '') => {
+    if (!email) return;
+    const trimmedEmail = typeof email === 'string' ? email.trim() : String(email || '').trim();
+    if (!trimmedEmail) return;
+    const lower = trimmedEmail.toLowerCase();
+    const existing = options.get(lower);
+    if (existing) {
+      if (!existing.name && name) {
+        existing.name = name;
+      }
+      return;
+    }
+    options.set(lower, { email: trimmedEmail, name: name || '' });
+  };
+
+  users
+    .filter(user => user && user.role === 'manager')
+    .forEach(user => {
+      const email = user?.email ? String(user.email).trim() : '';
+      if (!email) return;
+      let name = '';
+      if (user.employeeId) {
+        const emp = employees.find(e => e && e.id == user.employeeId);
+        if (emp && emp.name) {
+          name = String(emp.name).trim();
+        }
+      }
+      addOption(email, name);
+    });
+
+  employees
+    .filter(emp => getEmpRole(emp) === 'manager')
+    .forEach(emp => {
+      const email = getEmpEmail(emp);
+      const name = emp?.name ? String(emp.name).trim() : '';
+      addOption(email, name);
+    });
+
+  const extraList = Array.isArray(extras) ? extras : [];
+  extraList.forEach(email => addOption(email));
+
+  if (ADMIN_EMAIL) {
+    addOption(ADMIN_EMAIL, 'Administrator');
+  }
+
+  return Array.from(options.values()).sort((a, b) => {
+    const nameA = a.name ? a.name.toLowerCase() : '';
+    const nameB = b.name ? b.name.toLowerCase() : '';
+    if (nameA && nameB) {
+      const nameCompare = nameA.localeCompare(nameB);
+      if (nameCompare !== 0) return nameCompare;
+    } else if (nameA) {
+      return -1;
+    } else if (nameB) {
+      return 1;
+    }
+    return a.email.toLowerCase().localeCompare(b.email.toLowerCase());
+  });
 }
 
 function normalizeNumberKey(key = '') {
@@ -2006,7 +2113,9 @@ init().then(async () => {
     try {
       const config = await loadEmailSettings({ force: true });
       const { pass, ...rest } = config;
-      res.json({ ...rest, hasPassword: Boolean(pass) });
+      await db.read();
+      const recipientOptions = buildRecipientOptions(db.data, rest.recipients);
+      res.json({ ...rest, hasPassword: Boolean(pass), recipientOptions });
     } catch (err) {
       console.error('Failed to load email settings', err);
       res.status(500).json({ error: 'Unable to load email settings.' });
@@ -2036,6 +2145,22 @@ init().then(async () => {
       const user = typeof payload.user === 'string' ? payload.user.trim() : '';
       const from = typeof payload.from === 'string' ? payload.from.trim() : '';
       const replyTo = typeof payload.replyTo === 'string' ? payload.replyTo.trim() : '';
+      const recipientsRaw = Array.isArray(payload.recipients)
+        ? payload.recipients
+        : typeof payload.recipients === 'string'
+          ? payload.recipients.split(/[,;]+/)
+          : [];
+      const recipientMap = new Map();
+      recipientsRaw.forEach(value => {
+        if (value === undefined || value === null) return;
+        const trimmed = typeof value === 'string' ? value.trim() : String(value || '').trim();
+        if (!trimmed) return;
+        const lower = trimmed.toLowerCase();
+        if (!recipientMap.has(lower)) {
+          recipientMap.set(lower, trimmed);
+        }
+      });
+      const recipients = Array.from(recipientMap.values());
       const updatePassword = payload.updatePassword === true;
       const incomingPassword = typeof payload.password === 'string' ? payload.password : '';
 
@@ -2058,7 +2183,8 @@ init().then(async () => {
         user,
         pass,
         from: from || user,
-        replyTo
+        replyTo,
+        recipients
       };
 
       db.data.settings.email = storedConfig;
@@ -2069,7 +2195,8 @@ init().then(async () => {
       emailTransporterCache = { transporter: null, signature: null };
 
       const { pass: _, ...safe } = normalized;
-      res.json({ ...safe, hasPassword: Boolean(storedConfig.pass) });
+      const recipientOptions = buildRecipientOptions(db.data, safe.recipients);
+      res.json({ ...safe, hasPassword: Boolean(storedConfig.pass), recipientOptions });
     } catch (err) {
       console.error('Failed to save email settings', err);
       res.status(500).json({ error: 'Unable to save email settings.' });
@@ -2383,13 +2510,22 @@ init().then(async () => {
     db.data.applications.push(newApp);
     await db.write();
 
-    const managers = db.data.users.filter(u => u.role === 'manager');
-    const managerEmails = managers.map(m => m.email).filter(Boolean);
+    const emailConfig = await loadEmailSettings();
+    let recipientEmails = Array.isArray(emailConfig?.recipients)
+      ? emailConfig.recipients.filter(Boolean)
+      : [];
+    if (!recipientEmails.length) {
+      const managers = db.data.users.filter(u => u.role === 'manager');
+      recipientEmails = managers.map(m => m.email).filter(Boolean);
+    }
     const empEmail = getEmpEmail(employee);
     const name = employee?.name || empEmail || `Employee ${employeeId}`;
-    if (managerEmails.length) {
+    if (!recipientEmails.length && ADMIN_EMAIL) {
+      recipientEmails = [ADMIN_EMAIL];
+    }
+    if (recipientEmails.length) {
       await sendEmail(
-        managerEmails.join(','),
+        recipientEmails,
         `Leave request from ${name}`,
         `${name} applied for ${normalizedType} leave from ${normalizedFrom} to ${normalizedTo}.`
       );

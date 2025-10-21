@@ -1705,6 +1705,14 @@ body {
   min-width: 120px;
 }
 
+.settings-form__fields--full {
+  flex: 1 1 100%;
+  min-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .settings-form__toggle {
   flex: 1 1 100%;
   display: flex;
@@ -1721,6 +1729,36 @@ body {
   width: 18px;
   height: 18px;
   accent-color: var(--md-sys-color-primary);
+}
+
+.email-recipient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.email-recipient-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  color: var(--md-sys-color-on-surface);
+}
+
+.email-recipient-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.email-recipient-empty {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .settings-form__help {

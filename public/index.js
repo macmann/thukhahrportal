@@ -121,6 +121,7 @@ let emailSettings = null;
 let emailSettingsLoaded = false;
 let emailSettingsLoading = null;
 let emailSettingsHasPassword = false;
+let emailRecipientOptions = [];
 
 function normalizeCandidateId(value) {
   const num = Number(value);
@@ -996,6 +997,8 @@ function renderEmailSettingsForm() {
   const fromInput = document.getElementById('emailFrom');
   const replyInput = document.getElementById('emailReplyTo');
   const passwordInput = document.getElementById('emailPassword');
+  const recipientsContainer = document.getElementById('emailRecipients');
+  const recipientsHelp = document.getElementById('emailRecipientsHelp');
   const help = document.getElementById('emailPasswordHelp');
   const settings = emailSettings || {};
   emailSettingsHasPassword = Boolean(settings.hasPassword);
@@ -1008,6 +1011,59 @@ function renderEmailSettingsForm() {
   if (userInput) userInput.value = settings.user || '';
   if (fromInput) fromInput.value = settings.from || '';
   if (replyInput) replyInput.value = settings.replyTo || '';
+  if (recipientsContainer) {
+    const normalizedOptions = [];
+    const seen = new Set();
+    const addOption = (email, name = '') => {
+      if (!email) return;
+      const trimmed = typeof email === 'string' ? email.trim() : String(email || '').trim();
+      if (!trimmed) return;
+      const lower = trimmed.toLowerCase();
+      if (seen.has(lower)) return;
+      seen.add(lower);
+      normalizedOptions.push({ email: trimmed, name: name ? String(name).trim() : '' });
+    };
+    const baseOptions = Array.isArray(emailRecipientOptions) ? emailRecipientOptions : [];
+    baseOptions.forEach(option => addOption(option?.email, option?.name));
+    const selectedEmails = Array.isArray(settings.recipients)
+      ? settings.recipients
+          .map(value => (typeof value === 'string' ? value.trim() : String(value || '').trim()))
+          .filter(Boolean)
+      : [];
+    const selectedSet = new Set(selectedEmails.map(email => email.toLowerCase()));
+    selectedEmails.forEach(email => addOption(email));
+    if (!normalizedOptions.length) {
+      recipientsContainer.innerHTML = '<p class="email-recipient-empty">No manager email addresses are available yet.</p>';
+      if (recipientsHelp) {
+        recipientsHelp.textContent = 'Add manager accounts with email addresses to enable notifications.';
+      }
+    } else {
+      const items = normalizedOptions
+        .map((option, index) => {
+          const emailValue = option.email;
+          if (!emailValue) return '';
+          const inputId = `emailRecipient${index}`;
+          const checked = selectedSet.has(emailValue.toLowerCase()) ? ' checked' : '';
+          const labelText = option.name ? `${option.name} (${emailValue})` : emailValue;
+          const safeValue = escapeHtml(emailValue);
+          const safeLabel = escapeHtml(labelText);
+          return `
+            <label class="email-recipient-item" for="${inputId}">
+              <input type="checkbox" id="${inputId}" name="emailRecipients" value="${safeValue}"${checked}>
+              <span>${safeLabel}</span>
+            </label>
+          `;
+        })
+        .filter(Boolean)
+        .join('');
+      recipientsContainer.innerHTML = items || '<p class="email-recipient-empty">No manager email addresses are available yet.</p>';
+      if (recipientsHelp) {
+        recipientsHelp.textContent = 'Select which managers should receive leave notification emails.';
+      }
+    }
+  } else if (recipientsHelp) {
+    recipientsHelp.textContent = 'Select which managers should receive leave notification emails.';
+  }
   if (passwordInput) {
     passwordInput.value = '';
     passwordInput.dataset.dirty = 'false';
@@ -1037,8 +1093,10 @@ async function fetchEmailSettings({ force = false } = {}) {
       if (!res.ok) {
         throw new Error(data.error || 'Failed to load email settings.');
       }
-      emailSettings = { ...data };
-      emailSettingsHasPassword = Boolean(data.hasPassword);
+      const { recipientOptions: options = [], ...settingsData } = data;
+      emailRecipientOptions = Array.isArray(options) ? options : [];
+      emailSettings = { ...settingsData };
+      emailSettingsHasPassword = Boolean(settingsData.hasPassword);
       emailSettingsLoaded = true;
       return { settings: emailSettings, hasPassword: emailSettingsHasPassword };
     } catch (err) {
@@ -1088,6 +1146,11 @@ async function onEmailSettingsSubmit(ev) {
   try {
     const providerSelect = document.getElementById('emailProvider');
     const passwordInput = document.getElementById('emailPassword');
+    const recipientInputs = Array.from(document.querySelectorAll('input[name="emailRecipients"]'));
+    const selectedRecipients = recipientInputs
+      .filter(input => input instanceof HTMLInputElement && input.checked)
+      .map(input => input.value?.trim())
+      .filter(Boolean);
     const payload = {
       enabled: document.getElementById('emailEnabled')?.checked ?? false,
       provider: providerSelect && providerSelect.value === 'office365' ? 'office365' : 'custom',
@@ -1098,7 +1161,8 @@ async function onEmailSettingsSubmit(ev) {
       from: document.getElementById('emailFrom')?.value?.trim() || '',
       replyTo: document.getElementById('emailReplyTo')?.value?.trim() || '',
       updatePassword: passwordInput?.dataset?.dirty === 'true',
-      password: passwordInput?.value || ''
+      password: passwordInput?.value || '',
+      recipients: selectedRecipients
     };
     if (!payload.updatePassword) {
       delete payload.password;
@@ -1112,8 +1176,12 @@ async function onEmailSettingsSubmit(ev) {
     if (!res.ok) {
       throw new Error(data.error || 'Failed to save email settings.');
     }
-    emailSettings = { ...data };
-    emailSettingsHasPassword = Boolean(data.hasPassword);
+    const { recipientOptions: updatedOptions = [], ...settingsData } = data;
+    if (Array.isArray(updatedOptions)) {
+      emailRecipientOptions = updatedOptions;
+    }
+    emailSettings = { ...settingsData };
+    emailSettingsHasPassword = Boolean(settingsData.hasPassword);
     emailSettingsLoaded = true;
     renderEmailSettingsForm();
     setEmailSettingsStatus('Email settings saved successfully.', 'success');
