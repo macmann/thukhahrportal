@@ -1,3 +1,7 @@
 db.json
 mnt/data/db.json
 node_modules/
+.next/
+performance-review/.next/
+performance-review/node_modules/
+performance-review/out/
