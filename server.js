@@ -628,6 +628,62 @@ function buildEmployeeProfile(employee) {
   };
 }
 
+function buildUserInfoOpenApiPath() {
+  return {
+    get: {
+      summary: 'Retrieve detailed user information',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          in: 'path',
+          name: 'id',
+          required: true,
+          schema: { type: 'string' },
+          description: 'Unique identifier of the user or employee.'
+        }
+      ],
+      responses: {
+        200: {
+          description: 'User information payload',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UserInformationResponse' }
+            }
+          }
+        },
+        403: { description: 'Forbidden' },
+        404: { description: 'User not found' }
+      }
+    }
+  };
+}
+
+function buildUserInfoOpenApiSchemas() {
+  return {
+    ManagerInformation: {
+      type: ['object', 'null'],
+      properties: {
+        name: { type: 'string' },
+        employeeId: { type: ['string', 'null'] },
+        email: { type: ['string', 'null'], format: 'email' }
+      }
+    },
+    UserInformationResponse: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        employeeId: { type: ['string', 'null'] },
+        name: { type: ['string', 'null'] },
+        email: { type: ['string', 'null'], format: 'email' },
+        role: { type: 'string' },
+        title: { type: ['string', 'null'] },
+        department: { type: ['string', 'null'] },
+        manager: { $ref: '#/components/schemas/ManagerInformation' }
+      }
+    }
+  };
+}
+
 function upsertUserForEmployee(emp) {
   if (!emp) return false;
   normalizeEmployeeEmail(emp);
@@ -2565,6 +2621,95 @@ init().then(async () => {
     });
   });
 
+  app.get('/api/users/:id', authRequired, async (req, res) => {
+    const { id } = req.params;
+    await db.read();
+    db.data.users = Array.isArray(db.data.users) ? db.data.users : [];
+    db.data.employees = Array.isArray(db.data.employees) ? db.data.employees : [];
+
+    const matchedUser = db.data.users.find(
+      user => user && (user.id == id || user.employeeId == id)
+    );
+    const employeeId = matchedUser?.employeeId ?? id;
+    const matchedEmployee = db.data.employees.find(emp => emp && emp.id == employeeId) ||
+      db.data.employees.find(emp => emp && emp.id == id);
+
+    if (!matchedUser && !matchedEmployee) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isSelf = Boolean(
+      (matchedUser && (req.user.id == matchedUser.id || req.user.employeeId == matchedUser.employeeId)) ||
+      (matchedEmployee && req.user.employeeId == matchedEmployee.id) ||
+      req.user.id == id ||
+      req.user.employeeId == id
+    );
+
+    if (req.user.role !== 'manager' && !isSelf) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const resolvedEmployee = matchedEmployee || (matchedUser?.employeeId
+      ? db.data.employees.find(emp => emp && emp.id == matchedUser.employeeId)
+      : null);
+    const name = resolvedEmployee?.name ? String(resolvedEmployee.name).trim() : null;
+    const email = matchedUser?.email || (resolvedEmployee ? getEmpEmail(resolvedEmployee) : '');
+    const role = matchedUser?.role || getEmpRole(resolvedEmployee);
+
+    let managerInfo = null;
+    if (resolvedEmployee) {
+      const rawManager = findValueByKeywords(resolvedEmployee, [
+        'appraiser',
+        'manager',
+        'supervisor',
+        'reporting'
+      ]);
+      const managerCandidates = rawManager
+        ? rawManager
+            .split(/[\\/,&]+/)
+            .map(value => value && value.trim())
+            .filter(Boolean)
+        : [];
+      const primaryManagerName = managerCandidates[0] || (rawManager ? rawManager.trim() : '');
+
+      if (primaryManagerName) {
+        const normalizedPrimary = primaryManagerName.trim().toLowerCase();
+        const managerEmployee =
+          db.data.employees.find(emp =>
+            typeof emp?.name === 'string' && emp.name.trim().toLowerCase() === normalizedPrimary
+          ) || null;
+        const managerUser = managerEmployee
+          ? db.data.users.find(user => user && user.employeeId == managerEmployee.id)
+          : null;
+        const managerEmail = managerUser?.email || (managerEmployee ? getEmpEmail(managerEmployee) : '');
+
+        managerInfo = {
+          name: primaryManagerName,
+          employeeId: managerEmployee?.id ?? null,
+          email: managerEmail ? managerEmail : null
+        };
+      }
+    }
+
+    const title = resolvedEmployee
+      ? findValueByKeywords(resolvedEmployee, ['title', 'position'])
+      : '';
+    const department = resolvedEmployee
+      ? findValueByKeywords(resolvedEmployee, ['department', 'project', 'team'])
+      : '';
+
+    res.json({
+      id: matchedUser?.id || resolvedEmployee?.id || id,
+      employeeId: resolvedEmployee?.id || matchedUser?.employeeId || null,
+      name,
+      email: email ? email : null,
+      role,
+      title: title || null,
+      department: department || null,
+      manager: managerInfo
+    });
+  });
+
   app.get('/api/leave-summary', authRequired, async (req, res) => {
     const targetEmployeeId =
       req.user.role === 'manager' && req.query.employeeId
@@ -2650,7 +2795,37 @@ init().then(async () => {
   app.post('/api/leaves', authRequired, handleLeaveApplicationRequest);
   app.post('/api/apply-leave', authRequired, handleLeaveApplicationRequest);
 
+  app.get('/api/openapi/user-info', authRequired, (req, res) => {
+    const userInfoOpenApi = {
+      openapi: '3.0.0',
+      info: {
+        title: 'User Information API',
+        version: '1.0.0',
+        description: 'Specification describing the user information endpoint.'
+      },
+      servers: [{ url: 'http://localhost:3000' }],
+      paths: {
+        '/api/users/{id}': buildUserInfoOpenApiPath()
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT'
+          }
+        },
+        schemas: buildUserInfoOpenApiSchemas()
+      }
+    };
+
+    res
+      .type('application/json')
+      .send(JSON.stringify(userInfoOpenApi, null, 2));
+  });
+
   app.get('/api/openapi', authRequired, (req, res) => {
+    const userInfoSchemas = buildUserInfoOpenApiSchemas();
     const openApiSpec = {
       openapi: '3.0.0',
       info: {
@@ -2677,6 +2852,7 @@ init().then(async () => {
             }
           }
         },
+        '/api/users/{id}': buildUserInfoOpenApiPath(),
         '/api/leave-summary': {
           get: {
             summary: 'Retrieve leave balances and historical usage',
@@ -2869,7 +3045,8 @@ init().then(async () => {
                 }
               }
             }
-          }
+          },
+          ...userInfoSchemas
         }
       }
     };
