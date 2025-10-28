@@ -2534,6 +2534,19 @@ init().then(async () => {
     return { status: 201, application: newApp };
   }
 
+  async function handleLeaveApplicationRequest(req, res) {
+    const result = await createLeaveApplication(req.body, req.user);
+    if (result.error) {
+      return res
+        .status(result.status)
+        .json({ success: false, error: result.error });
+    }
+
+    return res
+      .status(result.status)
+      .json({ success: true, application: result.application });
+  }
+
   // ---- APPLY FOR LEAVE ----
   app.post('/applications', authRequired, async (req, res) => {
     const result = await createLeaveApplication(req.body, req.user);
@@ -2596,17 +2609,46 @@ init().then(async () => {
     });
   });
 
-  app.post('/api/leaves', authRequired, async (req, res) => {
-    const result = await createLeaveApplication(req.body, req.user);
-    if (result.error) {
-      return res
-        .status(result.status)
-        .json({ success: false, error: result.error });
+  app.get('/api/previous-leave-days', authRequired, async (req, res) => {
+    const targetEmployeeId =
+      req.user.role === 'manager' && req.query.employeeId
+        ? req.query.employeeId
+        : req.user.employeeId;
+
+    if (!targetEmployeeId) {
+      return res.status(400).json({ error: 'Employee ID is required.' });
     }
-    res
-      .status(result.status)
-      .json({ success: true, application: result.application });
+
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+    db.data.applications = Array.isArray(db.data.applications)
+      ? db.data.applications
+      : [];
+
+    const employee = db.data.employees.find(e => e.id == targetEmployeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const now = new Date();
+    const previousLeaveDays = db.data.applications
+      .filter(app => app.employeeId == targetEmployeeId && app.status === 'approved')
+      .filter(app => {
+        const toDate = new Date(app.to);
+        return !Number.isNaN(toDate.getTime()) && toDate < now;
+      })
+      .reduce((sum, app) => sum + getLeaveDays(app), 0);
+
+    res.json({
+      employeeId: employee.id,
+      previousLeaveDays
+    });
   });
+
+  app.post('/api/leaves', authRequired, handleLeaveApplicationRequest);
+  app.post('/api/apply-leave', authRequired, handleLeaveApplicationRequest);
 
   app.get('/api/openapi', authRequired, (req, res) => {
     const openApiSpec = {
@@ -2660,9 +2702,62 @@ init().then(async () => {
             }
           }
         },
+        '/api/previous-leave-days': {
+          get: {
+            summary: 'Retrieve total approved leave days in the past',
+            security: [{ bearerAuth: [] }],
+            parameters: [
+              {
+                in: 'query',
+                name: 'employeeId',
+                schema: { type: 'string' },
+                description:
+                  'Optional employee identifier. Managers can view other employees.'
+              }
+            ],
+            responses: {
+              200: {
+                description: 'Total approved leave days prior to today',
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/PreviousLeaveDaysResponse' }
+                  }
+                }
+              },
+              400: { description: 'Employee ID missing' },
+              404: { description: 'Employee not found' }
+            }
+          }
+        },
         '/api/leaves': {
           post: {
             summary: 'Apply for leave',
+            security: [{ bearerAuth: [] }],
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/LeaveApplicationRequest' }
+                }
+              }
+            },
+            responses: {
+              201: {
+                description: 'Leave application created',
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/LeaveApplicationResponse' }
+                  }
+                }
+              },
+              400: { description: 'Validation error' },
+              403: { description: 'Forbidden' }
+            }
+          }
+        },
+        '/api/apply-leave': {
+          post: {
+            summary: 'Apply for leave (alias of /api/leaves)',
             security: [{ bearerAuth: [] }],
             requestBody: {
               required: true,
@@ -2729,6 +2824,13 @@ init().then(async () => {
                 type: 'object',
                 additionalProperties: { type: 'number' }
               },
+              previousLeaveDays: { type: 'number' }
+            }
+          },
+          PreviousLeaveDaysResponse: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
               previousLeaveDays: { type: 'number' }
             }
           },
