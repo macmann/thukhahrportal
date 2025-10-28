@@ -12,17 +12,20 @@ const POST_LOGIN_PATH = '/api/post-login/user-login';
 const POST_LOGIN_AUTH =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudElkIjoiNjkwMDcxMjAzN2MwZWQwMzY4MjFiMzM0IiwidHlwZSI6Im11bHRpYWdlbnQiLCJpYXQiOjE3NjE2MzY2NDB9.-reLuknFL4cc26r2BGms92CZnSHj-J3riIgo7XM4ZcI';
 const POST_LOGIN_TIMEOUT_MS = 5000;
-const CHAT_WIDGET_URL = 'https://qa.atenxion.ai/chat-widget?agentchainId=6900712037c0ed036821b334';
+const CHAT_WIDGET_URL =
+  'https://qa.atenxion.ai/chat-widget?agentchainId=6900712037c0ed036821b334';
 
 function updateChatWidgetUser(employeeId) {
   const iframe = document.getElementById('chatWidgetIframe');
   if (!iframe || typeof URL !== 'function') return;
 
   const widgetUrl = new URL(CHAT_WIDGET_URL);
+  widgetUrl.searchParams.delete('employeeId');
+
   if (employeeId) {
-    widgetUrl.searchParams.set('employeeId', String(employeeId));
+    widgetUrl.searchParams.set('userId', String(employeeId));
   } else {
-    widgetUrl.searchParams.delete('employeeId');
+    widgetUrl.searchParams.delete('userId');
   }
 
   iframe.src = widgetUrl.toString();
