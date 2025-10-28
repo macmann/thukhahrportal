@@ -688,6 +688,234 @@ function buildUserInfoLookupOpenApiPath() {
   };
 }
 
+function buildLeaveApplicationSchemas() {
+  const leaveTypes = Object.keys(DEFAULT_LEAVE_BALANCES);
+  return {
+    EmployeeScopedRequest: {
+      type: 'object',
+      properties: {
+        employeeId: {
+          type: 'string',
+          description:
+            'Optional employee identifier. Required when acting on behalf of another employee.'
+        }
+      }
+    },
+    LeaveApplicationSummary: {
+      type: 'object',
+      properties: {
+        id: { type: ['integer', 'string'] },
+        employeeId: { type: 'string' },
+        type: { type: 'string', enum: leaveTypes },
+        from: { type: 'string', format: 'date' },
+        to: { type: 'string', format: 'date' },
+        status: { type: 'string' },
+        reason: { type: 'string' },
+        halfDay: { type: 'boolean' },
+        halfDayType: { type: ['string', 'null'] },
+        days: { type: 'number', format: 'float' },
+        approvedBy: { type: 'string' },
+        approverRemark: { type: 'string' },
+        approvedAt: { type: 'string', format: 'date-time' },
+        cancelledAt: { type: 'string', format: 'date-time' }
+      }
+    },
+    LeaveUsageResponse: {
+      type: 'object',
+      properties: {
+        employeeId: { type: 'string' },
+        totalApprovedDays: { type: 'number', format: 'float' },
+        applications: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/LeaveApplicationSummary' }
+        }
+      }
+    },
+    PendingLeaveResponse: {
+      type: 'object',
+      properties: {
+        employeeId: { type: 'string' },
+        totalPendingDays: { type: 'number', format: 'float' },
+        pendingApplications: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/LeaveApplicationSummary' }
+        }
+      }
+    },
+    LeaveBalanceResponse: {
+      type: 'object',
+      properties: {
+        employeeId: { type: 'string' },
+        leaveBalances: {
+          type: 'object',
+          additionalProperties: { type: 'number', format: 'float' }
+        }
+      }
+    },
+    LeaveApplicationRequest: {
+      type: 'object',
+      required: ['employeeId', 'type', 'from', 'to'],
+      properties: {
+        employeeId: { type: 'string' },
+        type: {
+          type: 'string',
+          enum: leaveTypes
+        },
+        from: { type: 'string', format: 'date' },
+        to: { type: 'string', format: 'date' },
+        reason: { type: 'string' },
+        halfDay: { type: 'boolean' },
+        halfDayType: { type: 'string' }
+      }
+    },
+    LeaveApplicationResponse: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        application: {
+          $ref: '#/components/schemas/LeaveApplicationSummary'
+        }
+      }
+    }
+  };
+}
+
+function buildLeaveApplicationPaths() {
+  return {
+    '/api/leave/existing-days': {
+      post: {
+        summary: 'Retrieve approved leave usage by employee',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/EmployeeScopedRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Approved leave totals for the employee',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LeaveUsageResponse' }
+              }
+            }
+          },
+          400: { description: 'Employee ID missing' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Employee not found' }
+        }
+      }
+    },
+    '/api/leave/pending': {
+      post: {
+        summary: 'Retrieve pending leave applications for an employee',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/EmployeeScopedRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Pending leave applications and totals',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PendingLeaveResponse' }
+              }
+            }
+          },
+          400: { description: 'Employee ID missing' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Employee not found' }
+        }
+      }
+    },
+    '/api/leave/balance': {
+      post: {
+        summary: 'Retrieve current leave balances for an employee',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/EmployeeScopedRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Leave balance details',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LeaveBalanceResponse' }
+              }
+            }
+          },
+          400: { description: 'Employee ID missing' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Employee not found' }
+        }
+      }
+    },
+    '/api/leave/submit': {
+      post: {
+        summary: 'Submit a leave application',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/LeaveApplicationRequest' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Leave application created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LeaveApplicationResponse' }
+              }
+            }
+          },
+          400: { description: 'Validation error' },
+          403: { description: 'Forbidden' }
+        }
+      }
+    }
+  };
+}
+
+function buildLeaveApplicationOpenApiSpec() {
+  const schemas = buildLeaveApplicationSchemas();
+  return {
+    openapi: '3.0.0',
+    info: {
+      title: 'Leave Application API',
+      version: '1.0.0',
+      description: 'API specification for leave application utilities.'
+    },
+    servers: [{ url: 'http://localhost:3000' }],
+    paths: buildLeaveApplicationPaths(),
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT'
+        }
+      },
+      schemas
+    }
+  };
+}
+
 function buildUserInfoOpenApiSchemas() {
   return {
     ManagerInformation: {
@@ -2519,6 +2747,54 @@ init().then(async () => {
     return days;
   }
 
+  function normalizeEmployeeId(value) {
+    if (value === undefined || value === null) return null;
+    const normalized = typeof value === 'string' ? value : String(value);
+    const trimmed = normalized.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  function resolveEmployeeScope(req, providedId) {
+    const requestedId = normalizeEmployeeId(providedId);
+    const currentUserId = normalizeEmployeeId(req.user?.employeeId);
+    const employeeId = requestedId || currentUserId;
+
+    if (!employeeId) {
+      return { status: 400, error: 'Employee ID is required.' };
+    }
+
+    if (req.user.role !== 'manager' && employeeId !== currentUserId) {
+      return {
+        status: 403,
+        error: 'Cannot access leave information for another employee.'
+      };
+    }
+
+    return { employeeId };
+  }
+
+  function toLeaveApplicationSummary(app) {
+    const summary = {
+      id: app.id,
+      employeeId: normalizeEmployeeId(app.employeeId) || app.employeeId,
+      type: app.type,
+      from: app.from,
+      to: app.to,
+      status: app.status,
+      reason: app.reason || '',
+      halfDay: Boolean(app.halfDay),
+      halfDayType: app.halfDayType || null,
+      days: getLeaveDays(app)
+    };
+
+    if (app.approvedBy) summary.approvedBy = app.approvedBy;
+    if (app.approverRemark) summary.approverRemark = app.approverRemark;
+    if (app.approvedAt) summary.approvedAt = app.approvedAt;
+    if (app.cancelledAt) summary.cancelledAt = app.cancelledAt;
+
+    return summary;
+  }
+
   async function createLeaveApplication(payload, currentUser) {
     const {
       employeeId,
@@ -2640,7 +2916,13 @@ init().then(async () => {
   }
 
   async function handleLeaveApplicationRequest(req, res) {
-    const result = await createLeaveApplication(req.body, req.user);
+    const scope = resolveEmployeeScope(req, req.body?.employeeId);
+    if (scope.error) {
+      return res.status(scope.status).json({ success: false, error: scope.error });
+    }
+
+    const payload = { ...req.body, employeeId: scope.employeeId };
+    const result = await createLeaveApplication(payload, req.user);
     if (result.error) {
       return res
         .status(result.status)
@@ -2879,6 +3161,124 @@ init().then(async () => {
     });
   });
 
+  app.post('/api/leave/existing-days', authRequired, async (req, res) => {
+    const scope = resolveEmployeeScope(req, req.body?.employeeId);
+    if (scope.error) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+    db.data.applications = Array.isArray(db.data.applications)
+      ? db.data.applications
+      : [];
+
+    const employee = db.data.employees.find(e => e.id == scope.employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const approvedApplications = db.data.applications
+      .filter(app => app.employeeId == scope.employeeId)
+      .filter(app => String(app.status || '').toLowerCase() === 'approved')
+      .map(toLeaveApplicationSummary);
+
+    const totalApprovedDays = approvedApplications.reduce(
+      (total, app) => total + Number(app.days || 0),
+      0
+    );
+
+    res.json({
+      employeeId: normalizeEmployeeId(employee.id) || scope.employeeId,
+      totalApprovedDays,
+      applications: approvedApplications
+    });
+  });
+
+  app.post('/api/leave/pending', authRequired, async (req, res) => {
+    const scope = resolveEmployeeScope(req, req.body?.employeeId);
+    if (scope.error) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+    db.data.applications = Array.isArray(db.data.applications)
+      ? db.data.applications
+      : [];
+
+    const employee = db.data.employees.find(e => e.id == scope.employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const pendingApplications = db.data.applications
+      .filter(app => app.employeeId == scope.employeeId)
+      .filter(app => String(app.status || '').toLowerCase() === 'pending')
+      .map(toLeaveApplicationSummary);
+
+    const totalPendingDays = pendingApplications.reduce(
+      (total, app) => total + Number(app.days || 0),
+      0
+    );
+
+    res.json({
+      employeeId: normalizeEmployeeId(employee.id) || scope.employeeId,
+      totalPendingDays,
+      pendingApplications
+    });
+  });
+
+  app.post('/api/leave/balance', authRequired, async (req, res) => {
+    const scope = resolveEmployeeScope(req, req.body?.employeeId);
+    if (scope.error) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees)
+      ? db.data.employees
+      : [];
+
+    const employee = db.data.employees.find(e => e.id == scope.employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const leaveBalances =
+      employee.leaveBalances && typeof employee.leaveBalances === 'object'
+        ? { ...employee.leaveBalances }
+        : { ...DEFAULT_LEAVE_BALANCES };
+
+    res.json({
+      employeeId: normalizeEmployeeId(employee.id) || scope.employeeId,
+      leaveBalances
+    });
+  });
+
+  app.post('/api/leave/submit', authRequired, async (req, res) => {
+    const scope = resolveEmployeeScope(req, req.body?.employeeId);
+    if (scope.error) {
+      return res.status(scope.status).json({ success: false, error: scope.error });
+    }
+
+    const payload = { ...req.body, employeeId: scope.employeeId };
+    const result = await createLeaveApplication(payload, req.user);
+    if (result.error) {
+      return res
+        .status(result.status)
+        .json({ success: false, error: result.error });
+    }
+
+    return res
+      .status(result.status)
+      .json({ success: true, application: result.application });
+  });
+
   app.post('/api/leaves', authRequired, handleLeaveApplicationRequest);
   app.post('/api/apply-leave', authRequired, handleLeaveApplicationRequest);
 
@@ -2912,8 +3312,17 @@ init().then(async () => {
       .send(JSON.stringify(userInfoOpenApi, null, 2));
   });
 
+  app.get('/api/leaveapplicationopenapi', authRequired, (req, res) => {
+    const leaveOpenApi = buildLeaveApplicationOpenApiSpec();
+    res
+      .type('application/json')
+      .send(JSON.stringify(leaveOpenApi, null, 2));
+  });
+
   app.get('/api/openapi', authRequired, (req, res) => {
     const userInfoSchemas = buildUserInfoOpenApiSchemas();
+    const leaveApplicationSchemas = buildLeaveApplicationSchemas();
+    const leaveApplicationPaths = buildLeaveApplicationPaths();
     const openApiSpec = {
       openapi: '3.0.0',
       info: {
@@ -2942,6 +3351,7 @@ init().then(async () => {
         },
         '/api/users/{id}': buildUserInfoOpenApiPath(),
         '/api/users': buildUserInfoLookupOpenApiPath(),
+        ...leaveApplicationPaths,
         '/api/leave-summary': {
           get: {
             summary: 'Retrieve leave balances and historical usage',
@@ -3099,42 +3509,7 @@ init().then(async () => {
               previousLeaveDays: { type: 'number' }
             }
           },
-          LeaveApplicationRequest: {
-            type: 'object',
-            required: ['employeeId', 'type', 'from', 'to'],
-            properties: {
-              employeeId: { type: 'string' },
-              type: {
-                type: 'string',
-                enum: Object.keys(DEFAULT_LEAVE_BALANCES)
-              },
-              from: { type: 'string', format: 'date' },
-              to: { type: 'string', format: 'date' },
-              reason: { type: 'string' },
-              halfDay: { type: 'boolean' },
-              halfDayType: { type: 'string' }
-            }
-          },
-          LeaveApplicationResponse: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              application: {
-                type: 'object',
-                properties: {
-                  id: { type: 'integer' },
-                  employeeId: { type: 'string' },
-                  type: { type: 'string' },
-                  from: { type: 'string' },
-                  to: { type: 'string' },
-                  reason: { type: 'string' },
-                  status: { type: 'string' },
-                  halfDay: { type: 'boolean' },
-                  halfDayType: { type: 'string' }
-                }
-              }
-            }
-          },
+          ...leaveApplicationSchemas,
           ...userInfoSchemas
         }
       }
