@@ -243,6 +243,8 @@ let emailSettings = null;
 let emailSettingsLoaded = false;
 let emailSettingsLoading = null;
 let emailSettingsHasPassword = false;
+let emailSettingsHasClientSecret = false;
+let emailSettingsHasRefreshToken = false;
 let emailRecipientOptions = [];
 
 function normalizeCandidateId(value) {
@@ -1046,9 +1048,11 @@ function updateEmailSettingsFormState() {
   const hostInput = document.getElementById('emailHost');
   const portInput = document.getElementById('emailPort');
   const secureCheckbox = document.getElementById('emailSecure');
+  const authTypeSelect = document.getElementById('emailAuthType');
   if (!form || !providerSelect) return;
   const isOffice = providerSelect.value === 'office365';
   const previousProvider = form.dataset.provider || 'custom';
+  const authType = authTypeSelect ? authTypeSelect.value : 'basic';
 
   if (isOffice) {
     if (hostInput) {
@@ -1095,6 +1099,23 @@ function updateEmailSettingsFormState() {
   }
 
   form.dataset.provider = isOffice ? 'office365' : 'custom';
+
+  const basicSections = document.querySelectorAll('.auth-section--basic');
+  basicSections.forEach(section => {
+    if (authType === 'basic') {
+      section.classList.remove('hidden');
+    } else {
+      section.classList.add('hidden');
+    }
+  });
+  const oauthSections = document.querySelectorAll('.auth-section--oauth');
+  oauthSections.forEach(section => {
+    if (authType === 'oauth2') {
+      section.classList.remove('hidden');
+    } else {
+      section.classList.add('hidden');
+    }
+  });
 }
 
 function onEmailProviderChange() {
@@ -1105,13 +1126,27 @@ function onEmailProviderChange() {
   if (previousProvider !== 'office365') {
     rememberCustomEmailSettings();
   }
+  const authTypeSelect = document.getElementById('emailAuthType');
+  if (providerSelect && providerSelect.value === 'office365' && authTypeSelect && authTypeSelect.value !== 'oauth2') {
+    authTypeSelect.value = 'oauth2';
+  }
   updateEmailSettingsFormState();
   if (providerSelect) {
     const message = providerSelect.value === 'office365'
-      ? 'Applied Microsoft 365 defaults. Save to confirm the change.'
+      ? 'Microsoft 365 defaults applied. Provide modern auth credentials or save to confirm the change.'
       : 'Custom SMTP selected. Update the fields and save to apply.';
     setEmailSettingsStatus(message);
   }
+}
+
+function onEmailAuthTypeChange() {
+  updateEmailSettingsFormState();
+  const authTypeSelect = document.getElementById('emailAuthType');
+  if (!authTypeSelect) return;
+  const message = authTypeSelect.value === 'oauth2'
+    ? 'Modern authentication selected. Provide Azure AD OAuth credentials and save to enable notifications.'
+    : 'Username & password authentication selected. Ensure basic authentication is allowed for your SMTP service.';
+  setEmailSettingsStatus(message);
 }
 
 function renderEmailSettingsForm() {
@@ -1119,6 +1154,7 @@ function renderEmailSettingsForm() {
   if (!form) return;
   const enabledInput = document.getElementById('emailEnabled');
   const providerSelect = document.getElementById('emailProvider');
+  const authTypeSelect = document.getElementById('emailAuthType');
   const hostInput = document.getElementById('emailHost');
   const portInput = document.getElementById('emailPort');
   const secureCheckbox = document.getElementById('emailSecure');
@@ -1126,20 +1162,39 @@ function renderEmailSettingsForm() {
   const fromInput = document.getElementById('emailFrom');
   const replyInput = document.getElementById('emailReplyTo');
   const passwordInput = document.getElementById('emailPassword');
+  const oauthTenantInput = document.getElementById('emailOAuthTenant');
+  const oauthClientIdInput = document.getElementById('emailOAuthClientId');
+  const oauthScopeInput = document.getElementById('emailOAuthScope');
+  const oauthClientSecretInput = document.getElementById('emailOAuthClientSecret');
+  const oauthRefreshTokenInput = document.getElementById('emailOAuthRefreshToken');
   const recipientsContainer = document.getElementById('emailRecipients');
   const recipientsHelp = document.getElementById('emailRecipientsHelp');
   const help = document.getElementById('emailPasswordHelp');
+  const oauthClientSecretHelp = document.getElementById('emailOAuthClientSecretHelp');
+  const oauthRefreshTokenHelp = document.getElementById('emailOAuthRefreshTokenHelp');
   const settings = emailSettings || {};
-  emailSettingsHasPassword = Boolean(settings.hasPassword);
   if (enabledInput) enabledInput.checked = Boolean(settings.enabled);
   const provider = settings.provider === 'office365' ? 'office365' : 'custom';
   if (providerSelect) providerSelect.value = provider;
+  const authType = settings.authType === 'oauth2' ? 'oauth2' : 'basic';
+  if (authTypeSelect) authTypeSelect.value = authType;
   if (hostInput) hostInput.value = settings.host || (provider === 'office365' ? 'smtp.office365.com' : '');
   if (portInput) portInput.value = settings.port != null ? settings.port : (provider === 'office365' ? 587 : '');
   if (secureCheckbox) secureCheckbox.checked = Boolean(settings.secure);
   if (userInput) userInput.value = settings.user || '';
   if (fromInput) fromInput.value = settings.from || '';
   if (replyInput) replyInput.value = settings.replyTo || '';
+  if (oauthTenantInput) oauthTenantInput.value = settings.oauthTenant || '';
+  if (oauthClientIdInput) oauthClientIdInput.value = settings.oauthClientId || '';
+  if (oauthScopeInput) oauthScopeInput.value = settings.oauthScope || 'https://outlook.office365.com/.default';
+  if (oauthClientSecretInput) {
+    oauthClientSecretInput.value = '';
+    oauthClientSecretInput.dataset.dirty = 'false';
+  }
+  if (oauthRefreshTokenInput) {
+    oauthRefreshTokenInput.value = '';
+    oauthRefreshTokenInput.dataset.dirty = 'false';
+  }
   if (recipientsContainer) {
     const normalizedOptions = [];
     const seen = new Set();
@@ -1202,6 +1257,16 @@ function renderEmailSettingsForm() {
       ? 'Password is hidden. Enter a new value to update it.'
       : 'Provide the SMTP account password.';
   }
+  if (oauthClientSecretHelp) {
+    oauthClientSecretHelp.textContent = emailSettingsHasClientSecret
+      ? 'Client secret is hidden. Enter a new value to update it.'
+      : 'Provide the Azure AD application client secret.';
+  }
+  if (oauthRefreshTokenHelp) {
+    oauthRefreshTokenHelp.textContent = emailSettingsHasRefreshToken
+      ? 'Refresh token is hidden. Enter a new value to update it.'
+      : 'Provide a delegated refresh token if your app uses delegated permissions.';
+  }
   if (provider !== 'office365') {
     rememberCustomEmailSettings();
   }
@@ -1210,7 +1275,12 @@ function renderEmailSettingsForm() {
 
 async function fetchEmailSettings({ force = false } = {}) {
   if (!force && emailSettingsLoaded && !emailSettingsLoading) {
-    return { settings: emailSettings, hasPassword: emailSettingsHasPassword };
+    return {
+      settings: emailSettings,
+      hasPassword: emailSettingsHasPassword,
+      hasClientSecret: emailSettingsHasClientSecret,
+      hasRefreshToken: emailSettingsHasRefreshToken
+    };
   }
   if (!force && emailSettingsLoading) {
     return emailSettingsLoading;
@@ -1222,12 +1292,25 @@ async function fetchEmailSettings({ force = false } = {}) {
       if (!res.ok) {
         throw new Error(data.error || 'Failed to load email settings.');
       }
-      const { recipientOptions: options = [], ...settingsData } = data;
+      const {
+        recipientOptions: options = [],
+        hasPassword = false,
+        hasClientSecret = false,
+        hasRefreshToken = false,
+        ...settingsData
+      } = data;
       emailRecipientOptions = Array.isArray(options) ? options : [];
       emailSettings = { ...settingsData };
-      emailSettingsHasPassword = Boolean(settingsData.hasPassword);
+      emailSettingsHasPassword = Boolean(hasPassword);
+      emailSettingsHasClientSecret = Boolean(hasClientSecret);
+      emailSettingsHasRefreshToken = Boolean(hasRefreshToken);
       emailSettingsLoaded = true;
-      return { settings: emailSettings, hasPassword: emailSettingsHasPassword };
+      return {
+        settings: emailSettings,
+        hasPassword: emailSettingsHasPassword,
+        hasClientSecret: emailSettingsHasClientSecret,
+        hasRefreshToken: emailSettingsHasRefreshToken
+      };
     } catch (err) {
       emailSettingsLoaded = false;
       throw err;
@@ -1254,6 +1337,8 @@ async function loadEmailSettingsConfig({ force = false } = {}) {
     const result = await fetchEmailSettings({ force });
     emailSettings = result.settings;
     emailSettingsHasPassword = Boolean(result.hasPassword);
+    emailSettingsHasClientSecret = Boolean(result.hasClientSecret);
+    emailSettingsHasRefreshToken = Boolean(result.hasRefreshToken);
     renderEmailSettingsForm();
     const statusMessage = emailSettings?.enabled
       ? 'Email notifications are enabled.'
@@ -1274,7 +1359,13 @@ async function onEmailSettingsSubmit(ev) {
   setEmailSettingsStatus('Saving email settings...');
   try {
     const providerSelect = document.getElementById('emailProvider');
+    const authTypeSelect = document.getElementById('emailAuthType');
     const passwordInput = document.getElementById('emailPassword');
+    const oauthTenantInput = document.getElementById('emailOAuthTenant');
+    const oauthClientIdInput = document.getElementById('emailOAuthClientId');
+    const oauthScopeInput = document.getElementById('emailOAuthScope');
+    const oauthClientSecretInput = document.getElementById('emailOAuthClientSecret');
+    const oauthRefreshTokenInput = document.getElementById('emailOAuthRefreshToken');
     const recipientInputs = Array.from(document.querySelectorAll('input[name="emailRecipients"]'));
     const selectedRecipients = recipientInputs
       .filter(input => input instanceof HTMLInputElement && input.checked)
@@ -1291,10 +1382,28 @@ async function onEmailSettingsSubmit(ev) {
       replyTo: document.getElementById('emailReplyTo')?.value?.trim() || '',
       updatePassword: passwordInput?.dataset?.dirty === 'true',
       password: passwordInput?.value || '',
-      recipients: selectedRecipients
+      recipients: selectedRecipients,
+      authType: authTypeSelect && authTypeSelect.value === 'oauth2' ? 'oauth2' : 'basic',
+      oauthTenant: oauthTenantInput?.value?.trim() || '',
+      oauthClientId: oauthClientIdInput?.value?.trim() || '',
+      oauthScope: oauthScopeInput?.value?.trim() || '',
+      updateClientSecret: oauthClientSecretInput?.dataset?.dirty === 'true',
+      oauthClientSecret: oauthClientSecretInput?.value || '',
+      updateRefreshToken: oauthRefreshTokenInput?.dataset?.dirty === 'true',
+      oauthRefreshToken: oauthRefreshTokenInput?.value || ''
     };
+    const wantsRefreshToken = payload.updateRefreshToken
+      ? Boolean(payload.oauthRefreshToken)
+      : emailSettingsHasRefreshToken;
+    payload.oauthGrantType = wantsRefreshToken ? 'refresh_token' : 'client_credentials';
     if (!payload.updatePassword) {
       delete payload.password;
+    }
+    if (!payload.updateClientSecret) {
+      delete payload.oauthClientSecret;
+    }
+    if (!payload.updateRefreshToken) {
+      delete payload.oauthRefreshToken;
     }
     const res = await apiFetch('/settings/email', {
       method: 'PUT',
@@ -1305,12 +1414,20 @@ async function onEmailSettingsSubmit(ev) {
     if (!res.ok) {
       throw new Error(data.error || 'Failed to save email settings.');
     }
-    const { recipientOptions: updatedOptions = [], ...settingsData } = data;
+    const {
+      recipientOptions: updatedOptions = [],
+      hasPassword = false,
+      hasClientSecret = false,
+      hasRefreshToken = false,
+      ...settingsData
+    } = data;
     if (Array.isArray(updatedOptions)) {
       emailRecipientOptions = updatedOptions;
     }
     emailSettings = { ...settingsData };
-    emailSettingsHasPassword = Boolean(settingsData.hasPassword);
+    emailSettingsHasPassword = Boolean(hasPassword);
+    emailSettingsHasClientSecret = Boolean(hasClientSecret);
+    emailSettingsHasRefreshToken = Boolean(hasRefreshToken);
     emailSettingsLoaded = true;
     renderEmailSettingsForm();
     setEmailSettingsStatus('Email settings saved successfully.', 'success');
@@ -1327,6 +1444,28 @@ async function onEmailSettingsSubmit(ev) {
         help.textContent = emailSettingsHasPassword
           ? 'Password is hidden. Enter a new value to update it.'
           : 'Provide the SMTP account password.';
+      }
+    }
+    const oauthClientSecretInputFinal = document.getElementById('emailOAuthClientSecret');
+    if (oauthClientSecretInputFinal) {
+      oauthClientSecretInputFinal.value = '';
+      oauthClientSecretInputFinal.dataset.dirty = 'false';
+      const help = document.getElementById('emailOAuthClientSecretHelp');
+      if (help) {
+        help.textContent = emailSettingsHasClientSecret
+          ? 'Client secret is hidden. Enter a new value to update it.'
+          : 'Provide the Azure AD application client secret.';
+      }
+    }
+    const oauthRefreshTokenInputFinal = document.getElementById('emailOAuthRefreshToken');
+    if (oauthRefreshTokenInputFinal) {
+      oauthRefreshTokenInputFinal.value = '';
+      oauthRefreshTokenInputFinal.dataset.dirty = 'false';
+      const help = document.getElementById('emailOAuthRefreshTokenHelp');
+      if (help) {
+        help.textContent = emailSettingsHasRefreshToken
+          ? 'Refresh token is hidden. Enter a new value to update it.'
+          : 'Provide a delegated refresh token if your app uses delegated permissions.';
       }
     }
     if (submitBtn) submitBtn.disabled = false;
@@ -2860,6 +2999,10 @@ async function init() {
   if (emailProviderSelect) {
     emailProviderSelect.addEventListener('change', onEmailProviderChange);
   }
+  const emailAuthTypeSelect = document.getElementById('emailAuthType');
+  if (emailAuthTypeSelect) {
+    emailAuthTypeSelect.addEventListener('change', onEmailAuthTypeChange);
+  }
   const emailEnabledToggle = document.getElementById('emailEnabled');
   if (emailEnabledToggle) {
     emailEnabledToggle.addEventListener('change', () => {
@@ -2881,6 +3024,34 @@ async function init() {
           : emailSettingsHasPassword
             ? 'Password is hidden. Enter a new value to update it.'
             : 'Provide the SMTP account password.';
+      }
+    });
+  }
+  const emailOAuthClientSecretInput = document.getElementById('emailOAuthClientSecret');
+  if (emailOAuthClientSecretInput) {
+    emailOAuthClientSecretInput.addEventListener('input', () => {
+      emailOAuthClientSecretInput.dataset.dirty = 'true';
+      const help = document.getElementById('emailOAuthClientSecretHelp');
+      if (help) {
+        help.textContent = emailOAuthClientSecretInput.value
+          ? 'Client secret will be updated when you save.'
+          : emailSettingsHasClientSecret
+            ? 'Client secret is hidden. Enter a new value to update it.'
+            : 'Provide the Azure AD application client secret.';
+      }
+    });
+  }
+  const emailOAuthRefreshTokenInput = document.getElementById('emailOAuthRefreshToken');
+  if (emailOAuthRefreshTokenInput) {
+    emailOAuthRefreshTokenInput.addEventListener('input', () => {
+      emailOAuthRefreshTokenInput.dataset.dirty = 'true';
+      const help = document.getElementById('emailOAuthRefreshTokenHelp');
+      if (help) {
+        help.textContent = emailOAuthRefreshTokenInput.value
+          ? 'Refresh token will be updated when you save.'
+          : emailSettingsHasRefreshToken
+            ? 'Refresh token is hidden. Enter a new value to update it.'
+            : 'Provide a delegated refresh token if your app uses delegated permissions.';
       }
     });
   }
