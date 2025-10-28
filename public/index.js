@@ -61,10 +61,7 @@ function queuePostLoginSync(employeeId) {
   const url = buildPostLoginUrl();
   const normalizedEmployeeId = String(employeeId);
   const body = {
-    userId: normalizedEmployeeId,
-    data: {
-      employeeId: normalizedEmployeeId
-    }
+    employeeId: normalizedEmployeeId
   };
 
   const sendBeaconFallback = () => {
