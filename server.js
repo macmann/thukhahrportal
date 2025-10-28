@@ -785,7 +785,6 @@ function buildLeaveApplicationPaths() {
     '/api/leave/existing-days': {
       post: {
         summary: 'Retrieve approved leave usage by employee',
-        security: [{ bearerAuth: [] }],
         requestBody: {
           required: false,
           content: {
@@ -812,7 +811,6 @@ function buildLeaveApplicationPaths() {
     '/api/leave/pending': {
       post: {
         summary: 'Retrieve pending leave applications for an employee',
-        security: [{ bearerAuth: [] }],
         requestBody: {
           required: false,
           content: {
@@ -839,7 +837,6 @@ function buildLeaveApplicationPaths() {
     '/api/leave/balance': {
       post: {
         summary: 'Retrieve current leave balances for an employee',
-        security: [{ bearerAuth: [] }],
         requestBody: {
           required: false,
           content: {
@@ -866,7 +863,6 @@ function buildLeaveApplicationPaths() {
     '/api/leave/submit': {
       post: {
         summary: 'Submit a leave application',
-        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -2763,7 +2759,8 @@ init().then(async () => {
       return { status: 400, error: 'Employee ID is required.' };
     }
 
-    if (req.user.role !== 'manager' && employeeId !== currentUserId) {
+    const currentRole = req.user?.role;
+    if (req.user && currentRole !== 'manager' && employeeId !== currentUserId) {
       return {
         status: 403,
         error: 'Cannot access leave information for another employee.'
@@ -2820,6 +2817,7 @@ init().then(async () => {
     }
 
     if (
+      currentUser &&
       currentUser.role !== 'manager' &&
       currentUser.employeeId != employeeId
     ) {
@@ -2935,7 +2933,7 @@ init().then(async () => {
   }
 
   // ---- APPLY FOR LEAVE ----
-  app.post('/applications', authRequired, async (req, res) => {
+  app.post('/applications', async (req, res) => {
     const result = await createLeaveApplication(req.body, req.user);
     if (result.error) {
       return res.status(result.status).json({ error: result.error });
@@ -3123,11 +3121,11 @@ init().then(async () => {
     });
   });
 
-  app.get('/api/previous-leave-days', authRequired, async (req, res) => {
+  app.get('/api/previous-leave-days', async (req, res) => {
     const targetEmployeeId =
-      req.user.role === 'manager' && req.query.employeeId
-        ? req.query.employeeId
-        : req.user.employeeId;
+      normalizeEmployeeId(req.query?.employeeId) ||
+      normalizeEmployeeId(req.body?.employeeId) ||
+      normalizeEmployeeId(req.user?.employeeId);
 
     if (!targetEmployeeId) {
       return res.status(400).json({ error: 'Employee ID is required.' });
@@ -3161,7 +3159,7 @@ init().then(async () => {
     });
   });
 
-  app.post('/api/leave/existing-days', authRequired, async (req, res) => {
+  app.post('/api/leave/existing-days', async (req, res) => {
     const scope = resolveEmployeeScope(req, req.body?.employeeId);
     if (scope.error) {
       return res.status(scope.status).json({ error: scope.error });
@@ -3197,7 +3195,7 @@ init().then(async () => {
     });
   });
 
-  app.post('/api/leave/pending', authRequired, async (req, res) => {
+  app.post('/api/leave/pending', async (req, res) => {
     const scope = resolveEmployeeScope(req, req.body?.employeeId);
     if (scope.error) {
       return res.status(scope.status).json({ error: scope.error });
@@ -3233,7 +3231,7 @@ init().then(async () => {
     });
   });
 
-  app.post('/api/leave/balance', authRequired, async (req, res) => {
+  app.post('/api/leave/balance', async (req, res) => {
     const scope = resolveEmployeeScope(req, req.body?.employeeId);
     if (scope.error) {
       return res.status(scope.status).json({ error: scope.error });
@@ -3260,7 +3258,7 @@ init().then(async () => {
     });
   });
 
-  app.post('/api/leave/submit', authRequired, async (req, res) => {
+  app.post('/api/leave/submit', async (req, res) => {
     const scope = resolveEmployeeScope(req, req.body?.employeeId);
     if (scope.error) {
       return res.status(scope.status).json({ success: false, error: scope.error });
@@ -3279,8 +3277,8 @@ init().then(async () => {
       .json({ success: true, application: result.application });
   });
 
-  app.post('/api/leaves', authRequired, handleLeaveApplicationRequest);
-  app.post('/api/apply-leave', authRequired, handleLeaveApplicationRequest);
+  app.post('/api/leaves', handleLeaveApplicationRequest);
+  app.post('/api/apply-leave', handleLeaveApplicationRequest);
 
   app.get('/api/openapi/user-info', authRequired, (req, res) => {
     const userInfoOpenApi = {
@@ -3380,7 +3378,6 @@ init().then(async () => {
         '/api/previous-leave-days': {
           get: {
             summary: 'Retrieve total approved leave days in the past',
-            security: [{ bearerAuth: [] }],
             parameters: [
               {
                 in: 'query',
@@ -3407,7 +3404,6 @@ init().then(async () => {
         '/api/leaves': {
           post: {
             summary: 'Apply for leave',
-            security: [{ bearerAuth: [] }],
             requestBody: {
               required: true,
               content: {
@@ -3433,7 +3429,6 @@ init().then(async () => {
         '/api/apply-leave': {
           post: {
             summary: 'Apply for leave (alias of /api/leaves)',
-            security: [{ bearerAuth: [] }],
             requestBody: {
               required: true,
               content: {
