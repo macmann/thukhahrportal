@@ -658,6 +658,36 @@ function buildUserInfoOpenApiPath() {
   };
 }
 
+function buildUserInfoLookupOpenApiPath() {
+  return {
+    post: {
+      summary: 'Retrieve detailed user information by employee ID',
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/UserInformationLookupRequest' }
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: 'User information payload',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UserInformationResponse' }
+            }
+          }
+        },
+        400: { description: 'Employee ID is required' },
+        403: { description: 'Forbidden' },
+        404: { description: 'User not found' }
+      }
+    }
+  };
+}
+
 function buildUserInfoOpenApiSchemas() {
   return {
     ManagerInformation: {
@@ -679,6 +709,16 @@ function buildUserInfoOpenApiSchemas() {
         title: { type: ['string', 'null'] },
         department: { type: ['string', 'null'] },
         manager: { $ref: '#/components/schemas/ManagerInformation' }
+      }
+    },
+    UserInformationLookupRequest: {
+      type: 'object',
+      required: ['employeeId'],
+      properties: {
+        employeeId: {
+          type: 'string',
+          description: 'Employee identifier used for lookup.'
+        }
       }
     }
   };
@@ -2630,8 +2670,14 @@ init().then(async () => {
     });
   });
 
-  app.get('/api/users/:id', authRequired, async (req, res) => {
-    const { id } = req.params;
+  async function resolveUserInformation(identifier, currentUser) {
+    const rawId = identifier ?? '';
+    const id = typeof rawId === 'string' ? rawId.trim() : String(rawId).trim();
+
+    if (!id) {
+      return { status: 400, error: 'Employee ID is required' };
+    }
+
     await db.read();
     db.data.users = Array.isArray(db.data.users) ? db.data.users : [];
     db.data.employees = Array.isArray(db.data.employees) ? db.data.employees : [];
@@ -2644,18 +2690,18 @@ init().then(async () => {
       db.data.employees.find(emp => emp && emp.id == id);
 
     if (!matchedUser && !matchedEmployee) {
-      return res.status(404).json({ error: 'User not found' });
+      return { status: 404, error: 'User not found' };
     }
 
     const isSelf = Boolean(
-      (matchedUser && (req.user.id == matchedUser.id || req.user.employeeId == matchedUser.employeeId)) ||
-      (matchedEmployee && req.user.employeeId == matchedEmployee.id) ||
-      req.user.id == id ||
-      req.user.employeeId == id
+      (matchedUser && (currentUser.id == matchedUser.id || currentUser.employeeId == matchedUser.employeeId)) ||
+      (matchedEmployee && currentUser.employeeId == matchedEmployee.id) ||
+      currentUser.id == id ||
+      currentUser.employeeId == id
     );
 
-    if (req.user.role !== 'manager' && !isSelf) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (currentUser.role !== 'manager' && !isSelf) {
+      return { status: 403, error: 'Forbidden' };
     }
 
     const resolvedEmployee = matchedEmployee || (matchedUser?.employeeId
@@ -2707,16 +2753,48 @@ init().then(async () => {
       ? findValueByKeywords(resolvedEmployee, ['department', 'project', 'team'])
       : '';
 
-    res.json({
-      id: matchedUser?.id || resolvedEmployee?.id || id,
-      employeeId: resolvedEmployee?.id || matchedUser?.employeeId || null,
-      name,
-      email: email ? email : null,
-      role,
-      title: title || null,
-      department: department || null,
-      manager: managerInfo
-    });
+    return {
+      status: 200,
+      data: {
+        id: matchedUser?.id || resolvedEmployee?.id || id,
+        employeeId: resolvedEmployee?.id || matchedUser?.employeeId || null,
+        name,
+        email: email ? email : null,
+        role,
+        title: title || null,
+        department: department || null,
+        manager: managerInfo
+      }
+    };
+  }
+
+  app.get('/api/users/:id', authRequired, async (req, res) => {
+    const { id } = req.params;
+    const result = await resolveUserInformation(id, req.user);
+
+    if (result.error) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    res.status(result.status).json(result.data);
+  });
+
+  app.post('/api/users', authRequired, async (req, res) => {
+    const { employeeId } = req.body || {};
+    const normalizedId =
+      employeeId === null || employeeId === undefined ? '' : String(employeeId).trim();
+
+    if (!normalizedId) {
+      return res.status(400).json({ error: 'Employee ID is required' });
+    }
+
+    const result = await resolveUserInformation(normalizedId, req.user);
+
+    if (result.error) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    res.status(result.status).json(result.data);
   });
 
   app.get('/api/leave-summary', authRequired, async (req, res) => {
@@ -2814,7 +2892,8 @@ init().then(async () => {
       },
       servers: [{ url: 'http://localhost:3000' }],
       paths: {
-        '/api/users/{id}': buildUserInfoOpenApiPath()
+        '/api/users/{id}': buildUserInfoOpenApiPath(),
+        '/api/users': buildUserInfoLookupOpenApiPath()
       },
       components: {
         securitySchemes: {
@@ -2862,6 +2941,7 @@ init().then(async () => {
           }
         },
         '/api/users/{id}': buildUserInfoOpenApiPath(),
+        '/api/users': buildUserInfoLookupOpenApiPath(),
         '/api/leave-summary': {
           get: {
             summary: 'Retrieve leave balances and historical usage',
