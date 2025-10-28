@@ -7,6 +7,93 @@ let companyHolidays = [];
 let holidaysLoaded = false;
 let holidaysLoading = null;
 
+const POST_LOGIN_API_BASE = 'https://api-qa.atenxion.ai';
+const POST_LOGIN_PATH = '/integrations/hr/post-login-sync';
+const POST_LOGIN_AUTH =
+  'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudElkIjoiNjkwMDcxMjAzN2MwZWQwMzY4MjFiMzM0IiwidHlwZSI6Im11bHRpYWdlbnQiLCJpYXQiOjE3NjE2MzY2NDB9.-reLuknFL4cc26r2BGms92CZnSHj-J3riIgo7XM4ZcI';
+const POST_LOGIN_TIMEOUT_MS = 5000;
+
+function buildPostLoginUrl() {
+  return `${POST_LOGIN_API_BASE}${POST_LOGIN_PATH}`;
+}
+
+function jsonBlob(payload) {
+  const json = JSON.stringify(payload);
+  if (typeof Blob === 'function') {
+    return new Blob([json], { type: 'application/json' });
+  }
+  return json;
+}
+
+function timeoutFetch(url, options, ms) {
+  if (typeof AbortController !== 'function') {
+    return fetch(url, options);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  const opts = { ...(options || {}), signal: controller.signal };
+
+  return fetch(url, opts).finally(() => clearTimeout(timer));
+}
+
+function queuePostLoginSync(userId) {
+  if (!userId) return;
+
+  const url = buildPostLoginUrl();
+  const body = { userId };
+
+  const sendBeaconFallback = () => {
+    if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
+      console.warn('navigator.sendBeacon is unavailable; post-login sync could not be queued.');
+      return;
+    }
+
+    try {
+      const queued = navigator.sendBeacon(url, jsonBlob(body));
+      if (queued) {
+        console.info('Post-login sync queued via sendBeacon.');
+      } else {
+        console.warn('navigator.sendBeacon failed to queue post-login sync.');
+      }
+    } catch (error) {
+      console.warn('navigator.sendBeacon threw while queuing post-login sync.', error);
+    }
+  };
+
+  if (typeof fetch !== 'function') {
+    sendBeaconFallback();
+    return;
+  }
+
+  (async () => {
+    try {
+      const response = await timeoutFetch(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: POST_LOGIN_AUTH
+          },
+          body: JSON.stringify(body),
+          keepalive: true
+        },
+        POST_LOGIN_TIMEOUT_MS
+      );
+
+      if (response.ok) {
+        console.info('Post-login sync succeeded.');
+      } else {
+        console.warn(`Post-login sync responded with status ${response.status}.`);
+      }
+    } catch (error) {
+      console.warn('Post-login sync fetch failed; attempting sendBeacon fallback.', error);
+      sendBeaconFallback();
+    }
+  })();
+}
+
 function setupTabGroupMenus() {
   const groups = Array.from(document.querySelectorAll('[data-tab-group]'));
   if (!groups.length) return;
@@ -179,6 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       currentUser = JSON.parse(decodeURIComponent(params.get('user')));
       localStorage.setItem('brillar_user', JSON.stringify(currentUser));
+      queuePostLoginSync(currentUser?.id);
     } catch {}
     window.history.replaceState({}, document.title, '/');
   }
@@ -216,6 +304,7 @@ document.getElementById('loginForm').onsubmit = async function(ev) {
     localStorage.setItem('brillar_token', data.token);
     currentUser = data.user;
     localStorage.setItem('brillar_user', JSON.stringify(currentUser));
+    queuePostLoginSync(currentUser?.id);
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
     document.getElementById('changePassBtn').classList.remove('hidden');
