@@ -37,11 +37,14 @@ function timeoutFetch(url, options, ms) {
   return fetch(url, opts).finally(() => clearTimeout(timer));
 }
 
-function queuePostLoginSync(userId) {
-  if (!userId) return;
+function queuePostLoginSync(employeeId) {
+  if (!employeeId) {
+    console.warn('Post-login sync skipped: employeeId is unavailable.');
+    return;
+  }
 
   const url = buildPostLoginUrl();
-  const body = { userId: String(userId) };
+  const body = { userId: String(employeeId) };
 
   const sendBeaconFallback = () => {
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
@@ -279,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       currentUser = JSON.parse(decodeURIComponent(params.get('user')));
       localStorage.setItem('brillar_user', JSON.stringify(currentUser));
-      queuePostLoginSync(currentUser?.id);
+      queuePostLoginSync(currentUser?.employeeId);
     } catch {}
     window.history.replaceState({}, document.title, '/');
   }
@@ -317,7 +320,7 @@ document.getElementById('loginForm').onsubmit = async function(ev) {
     localStorage.setItem('brillar_token', data.token);
     currentUser = data.user;
     localStorage.setItem('brillar_user', JSON.stringify(currentUser));
-    queuePostLoginSync(currentUser?.id);
+    queuePostLoginSync(currentUser?.employeeId);
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
     document.getElementById('changePassBtn').classList.remove('hidden');
