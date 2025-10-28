@@ -57,12 +57,8 @@ function queuePostLoginSync(employeeId) {
 
   const url = buildPostLoginUrl();
   const normalizedEmployeeId = String(employeeId);
-  const numericEmployeeId = Number(normalizedEmployeeId);
-  const userId = Number.isNaN(numericEmployeeId)
-    ? normalizedEmployeeId
-    : numericEmployeeId;
   const body = {
-    userId,
+    userId: normalizedEmployeeId,
     data: {
       employeeId: normalizedEmployeeId
     }
