@@ -50,6 +50,7 @@ function queuePostLoginSync(userId) {
     }
 
     try {
+      console.info('Attempting post-login sync via sendBeacon.', { url, body });
       const queued = navigator.sendBeacon(url, jsonBlob(body));
       if (queued) {
         console.info('Post-login sync queued via sendBeacon.');
@@ -68,6 +69,8 @@ function queuePostLoginSync(userId) {
 
   (async () => {
     try {
+      const startTime = Date.now();
+      console.info('Initiating post-login sync request.', { url, body });
       const response = await timeoutFetch(
         url,
         {
@@ -83,12 +86,22 @@ function queuePostLoginSync(userId) {
       );
 
       if (response.ok) {
-        console.info('Post-login sync succeeded.');
+        console.info('Post-login sync succeeded.', {
+          status: response.status,
+          durationMs: Date.now() - startTime
+        });
       } else {
-        console.warn(`Post-login sync responded with status ${response.status}.`);
+        console.warn(`Post-login sync responded with status ${response.status}.`, {
+          status: response.status,
+          durationMs: Date.now() - startTime
+        });
       }
     } catch (error) {
-      console.warn('Post-login sync fetch failed; attempting sendBeacon fallback.', error);
+      console.warn('Post-login sync fetch failed; attempting sendBeacon fallback.', {
+        error,
+        url,
+        body
+      });
       sendBeaconFallback();
     }
   })();
