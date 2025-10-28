@@ -61,7 +61,7 @@ function queuePostLoginSync(employeeId) {
   const url = buildPostLoginUrl();
   const normalizedEmployeeId = String(employeeId);
   const body = {
-    employeeId: normalizedEmployeeId
+    employeeId: normalizedEmployeeId,
     userId:normalizedEmployeeId
   };
 
