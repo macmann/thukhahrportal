@@ -41,7 +41,7 @@ function queuePostLoginSync(userId) {
   if (!userId) return;
 
   const url = buildPostLoginUrl();
-  const body = { userId };
+  const body = { userId: String(userId) };
 
   const sendBeaconFallback = () => {
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
