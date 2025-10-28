@@ -14,13 +14,13 @@ const POST_LOGIN_AUTH =
 const POST_LOGIN_TIMEOUT_MS = 5000;
 const CHAT_WIDGET_URL = 'https://qa.atenxion.ai/chat-widget?agentchainId=6900712037c0ed036821b334';
 
-function updateChatWidgetUser(userId) {
+function updateChatWidgetUser(employeeId) {
   const iframe = document.getElementById('chatWidgetIframe');
   if (!iframe || typeof URL !== 'function') return;
 
   const widgetUrl = new URL(CHAT_WIDGET_URL);
-  if (userId) {
-    widgetUrl.searchParams.set('userId', String(userId));
+  if (employeeId) {
+    widgetUrl.searchParams.set('userId', String(employeeId));
   } else {
     widgetUrl.searchParams.delete('userId');
   }
@@ -52,11 +52,11 @@ function timeoutFetch(url, options, ms) {
   return fetch(url, opts).finally(() => clearTimeout(timer));
 }
 
-function queuePostLoginSync(userId) {
-  if (!userId) return;
+function queuePostLoginSync(employeeId) {
+  if (!employeeId) return;
 
   const url = buildPostLoginUrl();
-  const body = { userId: String(userId) };
+  const body = { userId: String(employeeId) };
 
   const sendBeaconFallback = () => {
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
@@ -294,8 +294,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       currentUser = JSON.parse(decodeURIComponent(params.get('user')));
       localStorage.setItem('brillar_user', JSON.stringify(currentUser));
-      queuePostLoginSync(currentUser?.id);
-      updateChatWidgetUser(currentUser?.id);
+      queuePostLoginSync(currentUser?.employeeId);
+      updateChatWidgetUser(currentUser?.employeeId);
     } catch {}
     window.history.replaceState({}, document.title, '/');
   }
@@ -313,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       currentUser = JSON.parse(localStorage.getItem('brillar_user'));
     } catch {}
-    updateChatWidgetUser(currentUser?.id);
+    updateChatWidgetUser(currentUser?.employeeId);
     toggleTabsByRole();
     init();
   }
@@ -335,8 +335,8 @@ document.getElementById('loginForm').onsubmit = async function(ev) {
     localStorage.setItem('brillar_token', data.token);
     currentUser = data.user;
     localStorage.setItem('brillar_user', JSON.stringify(currentUser));
-    queuePostLoginSync(currentUser?.id);
-    updateChatWidgetUser(currentUser?.id);
+    queuePostLoginSync(currentUser?.employeeId);
+    updateChatWidgetUser(currentUser?.employeeId);
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
     document.getElementById('changePassBtn').classList.remove('hidden');
