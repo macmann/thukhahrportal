@@ -10,7 +10,7 @@ let holidaysLoading = null;
 const POST_LOGIN_API_BASE = 'https://api-qa.atenxion.ai';
 const POST_LOGIN_PATH = '/api/post-login/user-login';
 const POST_LOGIN_AUTH =
-  'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudElkIjoiNjkwMDcxMjAzN2MwZWQwMzY4MjFiMzM0IiwidHlwZSI6Im11bHRpYWdlbnQiLCJpYXQiOjE3NjE2MzY2NDB9.-reLuknFL4cc26r2BGms92CZnSHj-J3riIgo7XM4ZcI';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudElkIjoiNjkwMDcxMjAzN2MwZWQwMzY4MjFiMzM0IiwidHlwZSI6Im11bHRpYWdlbnQiLCJpYXQiOjE3NjE2MzY2NDB9.-reLuknFL4cc26r2BGms92CZnSHj-J3riIgo7XM4ZcI';
 const POST_LOGIN_TIMEOUT_MS = 5000;
 
 function buildPostLoginUrl() {
