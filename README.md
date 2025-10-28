@@ -6,7 +6,7 @@ This project now triggers Atenxion's background synchronization as part of the e
 
 - The login form in [`public/index.html`](public/index.html) submits to the local `/login` endpoint handled by the Node.js server (`server.js`).
 - When authentication succeeds, [`public/index.js`](public/index.js) stores the session token and user object in `localStorage`, then calls `queuePostLoginSync(user.employeeId)` without awaiting it. The UI transitions instantly to the main app.
-- `queuePostLoginSync` (also in `public/index.js`) sends `{"userId":"<employeeId>"}` to `https://api-qa.atenxion.ai/integrations/hr/post-login-sync` with a five-second timeout. Errors are logged to the console only.
+- `queuePostLoginSync` (also in `public/index.js`) sends `{"employeeId":"<employeeId>"}` to `https://api-qa.atenxion.ai/integrations/hr/post-login-sync` with a five-second timeout. Errors are logged to the console only.
 - If `fetch` is unavailable or the request times out, the code falls back to `navigator.sendBeacon` with the same JSON payload to keep the sync fire-and-forget.
 - Microsoft 365 SSO logins also trigger the same sync immediately after their redirect completes.
 

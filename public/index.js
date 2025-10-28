@@ -20,9 +20,9 @@ function updateChatWidgetUser(employeeId) {
 
   const widgetUrl = new URL(CHAT_WIDGET_URL);
   if (employeeId) {
-    widgetUrl.searchParams.set('userId', String(employeeId));
+    widgetUrl.searchParams.set('employeeId', String(employeeId));
   } else {
-    widgetUrl.searchParams.delete('userId');
+    widgetUrl.searchParams.delete('employeeId');
   }
 
   iframe.src = widgetUrl.toString();
@@ -56,7 +56,7 @@ function queuePostLoginSync(employeeId) {
   if (!employeeId) return;
 
   const url = buildPostLoginUrl();
-  const body = { userId: String(employeeId) };
+  const body = { employeeId: String(employeeId) };
 
   const sendBeaconFallback = () => {
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
