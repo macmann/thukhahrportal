@@ -7,6 +7,10 @@ const DB_NAME = process.env.MONGODB_DB || 'brillarhrportal';
 const client = new MongoClient(MONGODB_URI);
 let database;
 
+const DB_CACHE_TTL_MS = Number(process.env.DB_CACHE_TTL_MS || 0);
+let lastLoadedAt = 0;
+let readPromise = null;
+
 async function init() {
   if (!database) {
     await client.connect();
@@ -114,32 +118,62 @@ async function syncSettings(settings = {}) {
 
 const db = {
   data: null,
-  async read() {
+  async read(options = {}) {
     await init();
-    const [
-      employees,
-      applications,
-      users,
-      positions,
-      candidates,
-      holidays,
-      settingsDocs
-    ] = await Promise.all([
-      database.collection('employees').find().toArray(),
-      database.collection('applications').find().toArray(),
-      database.collection('users').find().toArray(),
-      database.collection('positions').find().toArray(),
-      database.collection('candidates').find().toArray(),
-      database.collection('holidays').find().toArray(),
-      database.collection('settings').find().toArray()
-    ]);
-    const settings = {};
-    settingsDocs.forEach(doc => {
-      if (!doc || (!doc._id && !doc.key)) return;
-      const key = doc._id || doc.key;
-      settings[key] = doc.value;
-    });
-    this.data = { employees, applications, users, positions, candidates, holidays, settings };
+    let force = false;
+    if (typeof options === 'boolean') {
+      force = options;
+    } else if (options && typeof options === 'object' && options.force) {
+      force = true;
+    }
+
+    const now = Date.now();
+    if (
+      !force &&
+      this.data &&
+      (!DB_CACHE_TTL_MS || now - lastLoadedAt < DB_CACHE_TTL_MS)
+    ) {
+      return;
+    }
+
+    if (readPromise) {
+      await readPromise;
+      return;
+    }
+
+    readPromise = (async () => {
+      const [
+        employees,
+        applications,
+        users,
+        positions,
+        candidates,
+        holidays,
+        settingsDocs
+      ] = await Promise.all([
+        database.collection('employees').find().toArray(),
+        database.collection('applications').find().toArray(),
+        database.collection('users').find().toArray(),
+        database.collection('positions').find().toArray(),
+        database.collection('candidates').find().toArray(),
+        database.collection('holidays').find().toArray(),
+        database.collection('settings').find().toArray()
+      ]);
+      const settings = {};
+      settingsDocs.forEach(doc => {
+        if (!doc || (!doc._id && !doc.key)) return;
+        const key = doc._id || doc.key;
+        settings[key] = doc.value;
+      });
+      this.data = { employees, applications, users, positions, candidates, holidays, settings };
+      lastLoadedAt = Date.now();
+    })();
+
+    try {
+      await readPromise;
+    } finally {
+      readPromise = null;
+    }
   },
   async write() {
     if (!this.data) return;
@@ -163,6 +197,12 @@ const db = {
       syncCollection('holidays', holidays),
       syncSettings(settings)
     ]);
+    lastLoadedAt = Date.now();
+  },
+  invalidateCache() {
+    this.data = null;
+    lastLoadedAt = 0;
+    readPromise = null;
   }
 };
 
