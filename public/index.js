@@ -12,6 +12,21 @@ const POST_LOGIN_PATH = '/api/post-login/user-login';
 const POST_LOGIN_AUTH =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudElkIjoiNjkwMDcxMjAzN2MwZWQwMzY4MjFiMzM0IiwidHlwZSI6Im11bHRpYWdlbnQiLCJpYXQiOjE3NjE2MzY2NDB9.-reLuknFL4cc26r2BGms92CZnSHj-J3riIgo7XM4ZcI';
 const POST_LOGIN_TIMEOUT_MS = 5000;
+const CHAT_WIDGET_URL = 'https://qa.atenxion.ai/chat-widget?agentchainId=6900712037c0ed036821b334';
+
+function updateChatWidgetUser(userId) {
+  const iframe = document.getElementById('chatWidgetIframe');
+  if (!iframe || typeof URL !== 'function') return;
+
+  const widgetUrl = new URL(CHAT_WIDGET_URL);
+  if (userId) {
+    widgetUrl.searchParams.set('userId', String(userId));
+  } else {
+    widgetUrl.searchParams.delete('userId');
+  }
+
+  iframe.src = widgetUrl.toString();
+}
 
 function buildPostLoginUrl() {
   return `${POST_LOGIN_API_BASE}${POST_LOGIN_PATH}`;
@@ -280,6 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
       currentUser = JSON.parse(decodeURIComponent(params.get('user')));
       localStorage.setItem('brillar_user', JSON.stringify(currentUser));
       queuePostLoginSync(currentUser?.id);
+      updateChatWidgetUser(currentUser?.id);
     } catch {}
     window.history.replaceState({}, document.title, '/');
   }
@@ -288,6 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('logoutBtn').classList.add('hidden');
     document.getElementById('changePassBtn').classList.add('hidden');
     document.getElementById('mainApp').classList.add('hidden');
+    updateChatWidgetUser(null);
   } else {
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
@@ -296,6 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       currentUser = JSON.parse(localStorage.getItem('brillar_user'));
     } catch {}
+    updateChatWidgetUser(currentUser?.id);
     toggleTabsByRole();
     init();
   }
@@ -318,6 +336,7 @@ document.getElementById('loginForm').onsubmit = async function(ev) {
     currentUser = data.user;
     localStorage.setItem('brillar_user', JSON.stringify(currentUser));
     queuePostLoginSync(currentUser?.id);
+    updateChatWidgetUser(currentUser?.id);
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
     document.getElementById('changePassBtn').classList.remove('hidden');
@@ -351,6 +370,7 @@ function logout() {
   document.getElementById('tabLeaveReport').classList.add('hidden');
   document.getElementById('tabSettings').classList.add('hidden');
   refreshTabGroupVisibility();
+  updateChatWidgetUser(null);
   location.reload();
 }
 window.logout = logout;
