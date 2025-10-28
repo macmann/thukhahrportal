@@ -5,6 +5,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
 const nodemailer = require('nodemailer');
+const https = require('https');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
@@ -129,6 +130,7 @@ const MS_REDIRECT_URI = process.env.MS_REDIRECT_URI ||
   'http://localhost:3000/auth/microsoft/callback';
 // ---- EMAIL SETUP ----
 const EMAIL_SETTINGS_CACHE_MS = 60 * 1000;
+const DEFAULT_OAUTH_SCOPE = 'https://outlook.office365.com/.default';
 
 function getEnvEmailSettings() {
   const host = process.env.SMTP_HOST || '';
@@ -139,6 +141,13 @@ function getEnvEmailSettings() {
   const from = process.env.SMTP_FROM || user;
   const replyTo = process.env.SMTP_REPLY_TO || '';
   const recipientsEnv = process.env.SMTP_RECIPIENTS || '';
+  const authType = (process.env.SMTP_AUTH_TYPE || 'basic').trim().toLowerCase();
+  const oauthTenant = process.env.SMTP_OAUTH_TENANT || '';
+  const oauthClientId = process.env.SMTP_OAUTH_CLIENT_ID || '';
+  const oauthClientSecret = process.env.SMTP_OAUTH_CLIENT_SECRET || '';
+  const oauthScope = process.env.SMTP_OAUTH_SCOPE || '';
+  const oauthRefreshToken = process.env.SMTP_OAUTH_REFRESH_TOKEN || '';
+  const oauthGrantType = (process.env.SMTP_OAUTH_GRANT_TYPE || '').trim().toLowerCase();
   const recipients = recipientsEnv
     ? recipientsEnv
         .split(/[,;]+/)
@@ -155,7 +164,14 @@ function getEnvEmailSettings() {
     pass,
     from,
     replyTo,
-    recipients
+    recipients,
+    authType,
+    oauthTenant,
+    oauthClientId,
+    oauthClientSecret,
+    oauthScope,
+    oauthRefreshToken,
+    oauthGrantType
   };
 }
 
@@ -170,7 +186,14 @@ function normalizeEmailSettings(raw) {
     pass: '',
     from: '',
     replyTo: '',
-    recipients: []
+    recipients: [],
+    authType: 'basic',
+    oauthTenant: '',
+    oauthClientId: '',
+    oauthClientSecret: '',
+    oauthScope: DEFAULT_OAUTH_SCOPE,
+    oauthRefreshToken: '',
+    oauthGrantType: 'client_credentials'
   };
   const envSettings = getEnvEmailSettings();
   const result = { ...defaults, ...envSettings };
@@ -190,6 +213,27 @@ function normalizeEmailSettings(raw) {
     ? result.from.trim()
     : result.user || '';
   result.replyTo = typeof result.replyTo === 'string' ? result.replyTo.trim() : '';
+  const authType = typeof result.authType === 'string' ? result.authType.trim().toLowerCase() : 'basic';
+  result.authType = authType === 'oauth2' ? 'oauth2' : 'basic';
+  result.oauthTenant = typeof result.oauthTenant === 'string' ? result.oauthTenant.trim() : '';
+  result.oauthClientId = typeof result.oauthClientId === 'string' ? result.oauthClientId.trim() : '';
+  result.oauthClientSecret = typeof result.oauthClientSecret === 'string'
+    ? result.oauthClientSecret
+    : '';
+  result.oauthScope = typeof result.oauthScope === 'string' && result.oauthScope.trim()
+    ? result.oauthScope.trim()
+    : DEFAULT_OAUTH_SCOPE;
+  result.oauthRefreshToken = typeof result.oauthRefreshToken === 'string'
+    ? result.oauthRefreshToken
+    : '';
+  const grantType = typeof result.oauthGrantType === 'string'
+    ? result.oauthGrantType.trim().toLowerCase()
+    : 'client_credentials';
+  if (grantType === 'refresh_token') {
+    result.oauthGrantType = 'refresh_token';
+  } else {
+    result.oauthGrantType = 'client_credentials';
+  }
   const recipientValues = Array.isArray(result.recipients)
     ? result.recipients
     : typeof result.recipients === 'string'
@@ -219,6 +263,7 @@ function normalizeEmailSettings(raw) {
 
 let emailSettingsCache = { config: null, loadedAt: 0 };
 let emailTransporterCache = { transporter: null, signature: null };
+const emailOAuthTokenCache = new Map();
 
 async function loadEmailSettings({ force = false } = {}) {
   const now = Date.now();
@@ -236,12 +281,28 @@ async function loadEmailSettings({ force = false } = {}) {
   const stored = doc && doc.value && typeof doc.value === 'object' ? doc.value : null;
   const config = normalizeEmailSettings(stored);
   emailSettingsCache = { config, loadedAt: now };
+  if (force) {
+    emailOAuthTokenCache.clear();
+  }
   return config;
 }
 
 function transporterSignature(config) {
   if (!config) return '';
-  return [config.host, config.port, config.secure, config.user, Boolean(config.pass)].join('|');
+  return [
+    config.host,
+    config.port,
+    config.secure,
+    config.user,
+    config.authType,
+    Boolean(config.pass),
+    Boolean(config.oauthClientSecret),
+    Boolean(config.oauthRefreshToken),
+    config.oauthTenant,
+    config.oauthClientId,
+    config.oauthScope,
+    config.oauthGrantType
+  ].join('|');
 }
 
 async function getMailTransporter({ config: providedConfig, forceReload = false } = {}) {
@@ -253,19 +314,115 @@ async function getMailTransporter({ config: providedConfig, forceReload = false 
   if (!forceReload && emailTransporterCache.signature === signature && emailTransporterCache.transporter) {
     return emailTransporterCache.transporter;
   }
-  const transporter = nodemailer.createTransport({
+  emailOAuthTokenCache.clear();
+  const transporterOptions = {
     host: config.host,
     port: config.port,
-    secure: Boolean(config.secure),
-    auth: config.user
-      ? {
-          user: config.user,
-          pass: config.pass
-        }
-      : undefined
-  });
+    secure: Boolean(config.secure)
+  };
+  if (config.provider === 'office365') {
+    transporterOptions.requireTLS = true;
+    transporterOptions.tls = { ciphers: 'TLSv1.2' };
+  }
+  if (config.authType === 'oauth2') {
+    transporterOptions.authMethod = 'XOAUTH2';
+  } else if (config.user) {
+    transporterOptions.auth = {
+      user: config.user,
+      pass: config.pass
+    };
+  }
+  const transporter = nodemailer.createTransport(transporterOptions);
   emailTransporterCache = { transporter, signature };
   return transporter;
+}
+
+async function getOAuthAccessToken(config) {
+  if (!config) return null;
+  const cacheKey = [
+    config.host,
+    config.user,
+    config.oauthTenant,
+    config.oauthClientId,
+    config.oauthScope,
+    config.oauthGrantType
+  ].join('|');
+  const cached = emailOAuthTokenCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt - now > 60 * 1000) {
+    return cached.token;
+  }
+  const tenant = config.oauthTenant || 'common';
+  const clientId = config.oauthClientId;
+  const clientSecret = config.oauthClientSecret;
+  if (!tenant || !clientId || !clientSecret) {
+    throw new Error('OAuth credentials are incomplete. Provide tenant ID, client ID, and client secret.');
+  }
+  const scope = config.oauthScope || DEFAULT_OAUTH_SCOPE;
+  const grantType = config.oauthGrantType === 'refresh_token' && config.oauthRefreshToken
+    ? 'refresh_token'
+    : 'client_credentials';
+  const params = new URLSearchParams();
+  params.append('client_id', clientId);
+  params.append('client_secret', clientSecret);
+  params.append('scope', scope);
+  if (grantType === 'refresh_token') {
+    params.append('grant_type', 'refresh_token');
+    params.append('refresh_token', config.oauthRefreshToken);
+  } else {
+    params.append('grant_type', 'client_credentials');
+  }
+  const tokenEndpoint = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
+  const body = params.toString();
+  const requestResult = await new Promise((resolve, reject) => {
+    const url = new URL(tokenEndpoint);
+    const options = {
+      method: 'POST',
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search || ''}`,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    };
+    const req = https.request(options, res => {
+      let responseBody = '';
+      res.on('data', chunk => {
+        responseBody += chunk;
+      });
+      res.on('end', () => {
+        resolve({
+          statusCode: res.statusCode || 0,
+          statusMessage: res.statusMessage || '',
+          body: responseBody
+        });
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+  if (requestResult.statusCode < 200 || requestResult.statusCode >= 300) {
+    throw new Error(
+      `OAuth token request failed (${requestResult.statusCode} ${requestResult.statusMessage}): ${requestResult.body}`
+    );
+  }
+  let data;
+  try {
+    data = JSON.parse(requestResult.body);
+  } catch (err) {
+    throw new Error(`OAuth token response was not valid JSON: ${err.message}`);
+  }
+  const accessToken = data?.access_token;
+  if (!accessToken) {
+    throw new Error('OAuth token response did not include an access token.');
+  }
+  const expiresIn = Number(data.expires_in) || 3600;
+  const expiresAt = now + Math.max(expiresIn - 60, 60) * 1000;
+  const tokenData = { accessToken, expiresAt };
+  emailOAuthTokenCache.set(cacheKey, { token: tokenData, expiresAt });
+  return tokenData;
 }
 
 async function sendEmail(to, subject, text) {
@@ -300,6 +457,17 @@ async function sendEmail(to, subject, text) {
     };
     if (config.replyTo) {
       message.replyTo = config.replyTo;
+    }
+    if (config.authType === 'oauth2') {
+      const token = await getOAuthAccessToken(config);
+      if (!token || !token.accessToken) {
+        throw new Error('Unable to acquire OAuth access token for SMTP.');
+      }
+      message.auth = {
+        type: 'OAuth2',
+        user: config.user || config.from,
+        accessToken: token.accessToken
+      };
     }
     await transporter.sendMail(message);
   } catch (err) {
@@ -2441,10 +2609,21 @@ init().then(async () => {
   app.get('/settings/email', authRequired, managerOnly, async (req, res) => {
     try {
       const config = await loadEmailSettings({ force: true });
-      const { pass, ...rest } = config;
+      const {
+        pass,
+        oauthClientSecret,
+        oauthRefreshToken,
+        ...rest
+      } = config;
       await db.read();
       const recipientOptions = buildRecipientOptions(db.data, rest.recipients);
-      res.json({ ...rest, hasPassword: Boolean(pass), recipientOptions });
+      res.json({
+        ...rest,
+        hasPassword: Boolean(pass),
+        hasClientSecret: Boolean(oauthClientSecret),
+        hasRefreshToken: Boolean(oauthRefreshToken),
+        recipientOptions
+      });
     } catch (err) {
       console.error('Failed to load email settings', err);
       res.status(500).json({ error: 'Unable to load email settings.' });
@@ -2460,6 +2639,8 @@ init().then(async () => {
       let secure = payload.secure === true || payload.secure === 'true';
       let port = Number(payload.port);
       const enabled = payload.enabled !== false;
+      const authTypeRaw = typeof payload.authType === 'string' ? payload.authType.trim().toLowerCase() : 'basic';
+      let authType = authTypeRaw === 'oauth2' ? 'oauth2' : 'basic';
       if (provider === 'office365') {
         host = 'smtp.office365.com';
         port = 587;
@@ -2474,6 +2655,17 @@ init().then(async () => {
       const user = typeof payload.user === 'string' ? payload.user.trim() : '';
       const from = typeof payload.from === 'string' ? payload.from.trim() : '';
       const replyTo = typeof payload.replyTo === 'string' ? payload.replyTo.trim() : '';
+      const oauthTenant = typeof payload.oauthTenant === 'string' ? payload.oauthTenant.trim() : '';
+      const oauthClientId = typeof payload.oauthClientId === 'string' ? payload.oauthClientId.trim() : '';
+      const oauthScope = typeof payload.oauthScope === 'string' ? payload.oauthScope.trim() : '';
+      const updateClientSecret = payload.updateClientSecret === true;
+      const oauthClientSecret = typeof payload.oauthClientSecret === 'string' ? payload.oauthClientSecret : '';
+      const updateRefreshToken = payload.updateRefreshToken === true;
+      const oauthRefreshToken = typeof payload.oauthRefreshToken === 'string' ? payload.oauthRefreshToken : '';
+      const oauthGrantTypeRaw = typeof payload.oauthGrantType === 'string'
+        ? payload.oauthGrantType.trim().toLowerCase()
+        : '';
+      const oauthGrantType = oauthGrantTypeRaw === 'refresh_token' ? 'refresh_token' : 'client_credentials';
       const recipientsRaw = Array.isArray(payload.recipients)
         ? payload.recipients
         : typeof payload.recipients === 'string'
@@ -2502,6 +2694,14 @@ init().then(async () => {
       if (updatePassword) {
         pass = incomingPassword;
       }
+      let storedClientSecret = existing.oauthClientSecret || '';
+      if (updateClientSecret) {
+        storedClientSecret = oauthClientSecret;
+      }
+      let storedRefreshToken = existing.oauthRefreshToken || '';
+      if (updateRefreshToken) {
+        storedRefreshToken = oauthRefreshToken;
+      }
 
       const storedConfig = {
         enabled: Boolean(enabled && host),
@@ -2513,7 +2713,14 @@ init().then(async () => {
         pass,
         from: from || user,
         replyTo,
-        recipients
+        recipients,
+        authType,
+        oauthTenant,
+        oauthClientId,
+        oauthClientSecret: storedClientSecret,
+        oauthScope,
+        oauthRefreshToken: storedRefreshToken,
+        oauthGrantType
       };
 
       db.data.settings.email = storedConfig;
@@ -2523,9 +2730,20 @@ init().then(async () => {
       emailSettingsCache = { config: normalized, loadedAt: Date.now() };
       emailTransporterCache = { transporter: null, signature: null };
 
-      const { pass: _, ...safe } = normalized;
+      const {
+        pass: _pass,
+        oauthClientSecret: _secret,
+        oauthRefreshToken: _refresh,
+        ...safe
+      } = normalized;
       const recipientOptions = buildRecipientOptions(db.data, safe.recipients);
-      res.json({ ...safe, hasPassword: Boolean(storedConfig.pass), recipientOptions });
+      res.json({
+        ...safe,
+        hasPassword: Boolean(storedConfig.pass),
+        hasClientSecret: Boolean(storedClientSecret),
+        hasRefreshToken: Boolean(storedRefreshToken),
+        recipientOptions
+      });
     } catch (err) {
       console.error('Failed to save email settings', err);
       res.status(500).json({ error: 'Unable to save email settings.' });

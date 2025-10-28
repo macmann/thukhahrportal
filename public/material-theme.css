@@ -133,6 +133,10 @@ body {
   transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
+.md-input-wrapper--textarea {
+  align-items: flex-start;
+}
+
 .md-input-wrapper:focus-within {
   border-color: var(--md-sys-color-primary);
   box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.15);
@@ -180,6 +184,11 @@ body {
   font-size: 0.95rem;
   color: var(--md-sys-color-text);
   font-family: inherit;
+}
+
+.md-input--textarea {
+  min-height: 96px;
+  resize: vertical;
 }
 
 .md-select {

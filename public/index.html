@@ -906,6 +906,16 @@
               </div>
             </div>
             <div class="settings-form__fields">
+              <label class="md-label" for="emailAuthType">Authentication method</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">vpn_key</span>
+                <select id="emailAuthType" class="md-input">
+                  <option value="basic">Username &amp; password (LOGIN)</option>
+                  <option value="oauth2">Microsoft OAuth 2.0 (modern auth)</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-form__fields">
               <label class="md-label" for="emailHost">SMTP host</label>
               <div class="md-input-wrapper">
                 <span class="material-symbols-rounded">dns</span>
@@ -924,17 +934,52 @@
               <label for="emailSecure" class="md-label">Use SSL/TLS (port 465)</label>
             </div>
             <div class="settings-form__fields">
-              <label class="md-label" for="emailUser">SMTP username</label>
+              <label class="md-label" for="emailUser">SMTP username / sender</label>
               <div class="md-input-wrapper">
                 <span class="material-symbols-rounded">person</span>
                 <input type="text" id="emailUser" class="md-input" placeholder="user@example.com">
               </div>
             </div>
-            <div class="settings-form__fields">
+            <div class="settings-form__fields auth-section auth-section--basic">
               <label class="md-label" for="emailPassword">SMTP password</label>
               <div class="md-input-wrapper">
                 <span class="material-symbols-rounded">lock</span>
                 <input type="password" id="emailPassword" class="md-input" autocomplete="new-password" placeholder="Enter password">
+              </div>
+            </div>
+            <div class="settings-form__fields auth-section auth-section--oauth hidden">
+              <label class="md-label" for="emailOAuthTenant">Azure AD tenant ID / domain</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">apartment</span>
+                <input type="text" id="emailOAuthTenant" class="md-input" placeholder="contoso.onmicrosoft.com or GUID">
+              </div>
+            </div>
+            <div class="settings-form__fields auth-section auth-section--oauth hidden">
+              <label class="md-label" for="emailOAuthClientId">Application (client) ID</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">apps</span>
+                <input type="text" id="emailOAuthClientId" class="md-input" placeholder="00000000-0000-0000-0000-000000000000">
+              </div>
+            </div>
+            <div class="settings-form__fields auth-section auth-section--oauth hidden">
+              <label class="md-label" for="emailOAuthScope">OAuth scope</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">public</span>
+                <input type="text" id="emailOAuthScope" class="md-input" placeholder="https://outlook.office365.com/.default">
+              </div>
+            </div>
+            <div class="settings-form__fields auth-section auth-section--oauth hidden">
+              <label class="md-label" for="emailOAuthClientSecret">Client secret</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">key</span>
+                <input type="password" id="emailOAuthClientSecret" class="md-input" autocomplete="new-password" placeholder="Enter client secret">
+              </div>
+            </div>
+            <div class="settings-form__fields settings-form__fields--full auth-section auth-section--oauth hidden">
+              <label class="md-label" for="emailOAuthRefreshToken">Refresh token (optional)</label>
+              <div class="md-input-wrapper md-input-wrapper--textarea">
+                <span class="material-symbols-rounded">sync</span>
+                <textarea id="emailOAuthRefreshToken" class="md-input md-input--textarea" rows="3" placeholder="Paste a delegated refresh token to send as a specific mailbox"></textarea>
               </div>
             </div>
             <div class="settings-form__fields">
@@ -957,6 +1002,8 @@
             </div>
             <div class="settings-form__help" id="emailRecipientsHelp">Select which managers should receive leave notification emails.</div>
             <div class="settings-form__help" id="emailPasswordHelp">Password is stored securely. Leave blank to keep the current password.</div>
+            <div class="settings-form__help auth-section auth-section--oauth hidden" id="emailOAuthClientSecretHelp">Client secret is stored securely. Leave blank to keep the current value.</div>
+            <div class="settings-form__help auth-section auth-section--oauth hidden" id="emailOAuthRefreshTokenHelp">Provide a refresh token only if using delegated permissions. Leave blank to keep the current value.</div>
             <button type="submit" class="md-button md-button--filled md-button--small settings-form__submit">
               <span class="material-symbols-rounded">save</span>
               Save email settings
