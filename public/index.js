@@ -15,6 +15,21 @@ const POST_LOGIN_TIMEOUT_MS = 5000;
 const CHAT_WIDGET_URL =
   'https://qa.atenxion.ai/chat-widget?agentchainId=6900712037c0ed036821b334';
 
+function normalizeRole(role) {
+  return typeof role === 'string' ? role.trim().toLowerCase() : '';
+}
+
+function isManagerRole(roleOrUser) {
+  const role = typeof roleOrUser === 'string' ? roleOrUser : roleOrUser?.role;
+  const normalized = normalizeRole(role);
+  return normalized === 'manager' || normalized === 'superadmin';
+}
+
+function isSuperAdmin(roleOrUser) {
+  const role = typeof roleOrUser === 'string' ? roleOrUser : roleOrUser?.role;
+  return normalizeRole(role) === 'superadmin';
+}
+
 function updateChatWidgetUser(employeeId) {
   const iframe = document.getElementById('chatWidgetIframe');
   if (!iframe || typeof URL !== 'function') return;
@@ -378,6 +393,7 @@ function logout() {
   document.getElementById('tabManagerApps').classList.add('hidden');
   document.getElementById('tabLeaveReport').classList.add('hidden');
   document.getElementById('tabSettings').classList.add('hidden');
+  document.getElementById('tabFinance').classList.add('hidden');
   refreshTabGroupVisibility();
   updateChatWidgetUser(null);
   location.reload();
@@ -408,6 +424,14 @@ const toastIcons = {
   warning: 'warning',
   info: 'info'
 };
+
+const financeMonthInput = document.getElementById('financeMonth');
+const financeRefreshButton = document.getElementById('financeRefresh');
+const financeTableBody = document.getElementById('financeTableBody');
+const financeEmptyState = document.getElementById('financeEmptyState');
+let financeInitialized = false;
+let financeState = { month: '', employees: [] };
+let financeLoading = false;
 
 function showToast(message, type = 'info') {
   if (!toastContainer) {
@@ -475,6 +499,7 @@ function showPanel(name) {
   const managerBtn  = document.getElementById('tabManagerApps');
   const reportBtn   = document.getElementById('tabLeaveReport');
   const settingsBtn = document.getElementById('tabSettings');
+  const financeBtn = document.getElementById('tabFinance');
   const profilePanel = document.getElementById('profilePanel');
   const portalPanel = document.getElementById('portalPanel');
   const managePanel = document.getElementById('managePanel');
@@ -482,8 +507,9 @@ function showPanel(name) {
   const managerPanel = document.getElementById('managerAppsPanel');
   const reportPanel  = document.getElementById('leaveReportPanel');
   const settingsPanel = document.getElementById('settingsPanel');
+  const financePanel = document.getElementById('financePanel');
 
-  [profileBtn, portalBtn, manageBtn, recruitmentBtn, managerBtn, reportBtn, settingsBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
+  [profileBtn, portalBtn, manageBtn, recruitmentBtn, managerBtn, reportBtn, settingsBtn, financeBtn].forEach(btn => btn && btn.classList.remove('active-tab'));
 
   if (profilePanel) profilePanel.classList.add('hidden');
   portalPanel.classList.add('hidden');
@@ -492,6 +518,7 @@ function showPanel(name) {
   managerPanel.classList.add('hidden');
   reportPanel.classList.add('hidden');
   settingsPanel.classList.add('hidden');
+  if (financePanel) financePanel.classList.add('hidden');
 
   if (name === 'profile') {
     if (profilePanel) profilePanel.classList.remove('hidden');
@@ -509,7 +536,7 @@ function showPanel(name) {
   if (name === 'recruitment') {
     recruitmentPanel.classList.remove('hidden');
     recruitmentBtn.classList.add('active-tab');
-    if (currentUser?.role === 'manager') {
+    if (isManagerRole(currentUser?.role)) {
       if (recruitmentInitialized) {
         loadRecruitmentPositions();
       } else {
@@ -534,9 +561,17 @@ function showPanel(name) {
   if (name === 'settings') {
     settingsPanel.classList.remove('hidden');
     if (settingsBtn) settingsBtn.classList.add('active-tab');
-    if (currentUser?.role === 'manager') {
+    if (isManagerRole(currentUser?.role)) {
       loadHolidays();
       loadEmailSettingsConfig();
+    }
+  }
+  if (name === 'finance' && financePanel) {
+    financePanel.classList.remove('hidden');
+    if (financeBtn) financeBtn.classList.add('active-tab');
+    if (isSuperAdmin(currentUser)) {
+      setupFinanceModule();
+      loadFinanceData();
     }
   }
 }
@@ -545,20 +580,246 @@ function showPanel(name) {
 function toggleTabsByRole() {
   const profileTab = document.getElementById('tabProfile');
   if (profileTab) profileTab.classList.remove('hidden');
-  if (currentUser && currentUser.role === 'manager') {
-    document.getElementById('tabManage').classList.remove('hidden');
-    document.getElementById('tabRecruitment').classList.remove('hidden');
-    document.getElementById('tabManagerApps').classList.remove('hidden');
-    document.getElementById('tabLeaveReport').classList.remove('hidden');
-    document.getElementById('tabSettings').classList.remove('hidden');
-  } else {
-    document.getElementById('tabManage').classList.add('hidden');
-    document.getElementById('tabRecruitment').classList.add('hidden');
-    document.getElementById('tabManagerApps').classList.add('hidden');
-    document.getElementById('tabLeaveReport').classList.add('hidden');
-    document.getElementById('tabSettings').classList.add('hidden');
+  const manageTab = document.getElementById('tabManage');
+  const recruitmentTab = document.getElementById('tabRecruitment');
+  const managerAppsTab = document.getElementById('tabManagerApps');
+  const leaveReportTab = document.getElementById('tabLeaveReport');
+  const settingsTab = document.getElementById('tabSettings');
+  const financeTab = document.getElementById('tabFinance');
+
+  const managerVisible = isManagerRole(currentUser?.role);
+  const superAdminVisible = isSuperAdmin(currentUser);
+
+  [manageTab, recruitmentTab, managerAppsTab, leaveReportTab, settingsTab].forEach(tab => {
+    if (!tab) return;
+    tab.classList.toggle('hidden', !managerVisible);
+  });
+
+  if (financeTab) {
+    financeTab.classList.toggle('hidden', !superAdminVisible);
   }
+
   refreshTabGroupVisibility();
+}
+
+function getCurrentPayrollMonthValue() {
+  const now = new Date();
+  const year = String(now.getFullYear()).padStart(4, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function formatFinanceUpdatedAt(value) {
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  const datePart = date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+  const timePart = date.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  return `Updated ${datePart} ${timePart}`;
+}
+
+function setupFinanceModule() {
+  if (financeInitialized) return;
+  if (!financeMonthInput || !financeTableBody) return;
+  financeInitialized = true;
+  financeMonthInput.value = financeMonthInput.value || getCurrentPayrollMonthValue();
+  financeMonthInput.addEventListener('change', () => {
+    if (!isSuperAdmin(currentUser)) return;
+    loadFinanceData();
+  });
+  if (financeRefreshButton) {
+    financeRefreshButton.addEventListener('click', () => {
+      if (!isSuperAdmin(currentUser)) return;
+      loadFinanceData(true);
+    });
+  }
+  financeTableBody.addEventListener('click', onFinanceTableClick);
+}
+
+function setFinanceLoading(isLoading) {
+  financeLoading = Boolean(isLoading);
+  if (financeRefreshButton) {
+    setButtonLoading(financeRefreshButton, financeLoading);
+  }
+  if (financeMonthInput) {
+    financeMonthInput.disabled = financeLoading;
+  }
+  if (financeTableBody) {
+    financeTableBody.classList.toggle('is-loading', financeLoading);
+  }
+}
+
+async function loadFinanceData(showFeedback = false) {
+  if (!isSuperAdmin(currentUser)) return;
+  if (!financeMonthInput) return;
+  const monthValue = financeMonthInput.value || getCurrentPayrollMonthValue();
+  financeMonthInput.value = monthValue;
+  setFinanceLoading(true);
+  try {
+    const res = await apiFetch(`/api/finance/salaries?month=${encodeURIComponent(monthValue)}`);
+    if (!res.ok) throw new Error('Failed to load finance data');
+    const data = await res.json();
+    financeState.month = data.month || monthValue;
+    financeState.employees = Array.isArray(data.employees) ? data.employees : [];
+    if (financeMonthInput) {
+      financeMonthInput.value = financeState.month || monthValue;
+    }
+    renderFinanceTable();
+    if (showFeedback) {
+      showToast('Finance data refreshed.', 'success');
+    }
+  } catch (error) {
+    console.error('Failed to load finance data', error);
+    showToast('Failed to load finance data. Please try again.', 'error');
+  } finally {
+    setFinanceLoading(false);
+  }
+}
+
+function renderFinanceTable() {
+  if (!financeTableBody) return;
+  const employees = Array.isArray(financeState.employees) ? financeState.employees : [];
+  if (!employees.length) {
+    financeTableBody.innerHTML = '';
+    if (financeEmptyState) financeEmptyState.classList.remove('hidden');
+    return;
+  }
+
+  const rows = employees
+    .map(emp => {
+      const salaryAmount = typeof emp?.salary?.amount === 'number' && Number.isFinite(emp.salary.amount)
+        ? emp.salary.amount
+        : null;
+      const inputValue = salaryAmount === null ? '' : salaryAmount.toFixed(2);
+      const updatedText = formatFinanceUpdatedAt(emp?.salary?.updatedAt);
+      const jobLine = [emp?.title || '', emp?.department || '']
+        .map(part => part && part.trim())
+        .filter(Boolean)
+        .join(' • ');
+      const emailDisplay = emp?.email ? escapeHtml(emp.email) : '—';
+      const jobDisplay = jobLine ? escapeHtml(jobLine) : '—';
+      return `
+        <tr data-employee-id="${escapeHtml(emp.employeeId || '')}">
+          <td>
+            <span class="finance-employee-name">${escapeHtml(emp?.name || 'Unknown')}</span>
+            <span class="finance-employee-meta">${emailDisplay}</span>
+          </td>
+          <td>
+            <span class="finance-employee-meta">${jobDisplay}</span>
+          </td>
+          <td>
+            <div class="finance-salary-field">
+              <input class="md-input finance-salary-input" type="number" min="0" step="0.01" value="${escapeHtml(inputValue)}" placeholder="0.00" data-salary-input>
+              <span class="finance-salary-updated">${escapeHtml(updatedText)}</span>
+            </div>
+          </td>
+          <td>
+            <button type="button" class="md-button md-button--filled md-button--small" data-action="finance-save" data-employee-id="${escapeHtml(emp.employeeId || '')}">
+              <span class="material-symbols-rounded">save</span>
+              Save
+            </button>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  financeTableBody.innerHTML = rows;
+  if (financeEmptyState) {
+    financeEmptyState.classList.toggle('hidden', employees.length > 0);
+  }
+}
+
+function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
+  if (!financeState || !Array.isArray(financeState.employees)) return;
+  const normalizedId = salaryPayload?.employeeId || employeeInfo?.employeeId;
+  if (!normalizedId) return;
+  const index = financeState.employees.findIndex(emp => String(emp.employeeId) === String(normalizedId));
+  if (index === -1) return;
+  const existing = financeState.employees[index];
+  const amount = typeof salaryPayload.amount === 'number' && Number.isFinite(salaryPayload.amount)
+    ? salaryPayload.amount
+    : null;
+  financeState.employees[index] = {
+    ...existing,
+    ...(employeeInfo ? {
+      name: employeeInfo.name ?? existing.name,
+      email: employeeInfo.email ?? existing.email,
+      title: employeeInfo.title ?? existing.title,
+      department: employeeInfo.department ?? existing.department,
+      status: employeeInfo.status ?? existing.status
+    } : {}),
+    salary: {
+      employeeId: normalizedId,
+      month: salaryPayload.month || financeState.month,
+      amount,
+      currency: salaryPayload.currency || null,
+      updatedAt: salaryPayload.updatedAt || new Date().toISOString()
+    }
+  };
+}
+
+function onFinanceTableClick(event) {
+  const button = event.target.closest('[data-action="finance-save"]');
+  if (!button) return;
+  if (!isSuperAdmin(currentUser)) {
+    showToast('You do not have permission to update salaries.', 'error');
+    return;
+  }
+  const employeeId = button.dataset.employeeId;
+  if (!employeeId) return;
+  const row = button.closest('tr');
+  if (!row) return;
+  const input = row.querySelector('[data-salary-input]');
+  if (!input) return;
+  const rawValue = input.value.trim();
+  if (!rawValue) {
+    showToast('Enter a salary amount before saving.', 'warning');
+    input.focus();
+    return;
+  }
+  const amount = Number(rawValue);
+  if (!Number.isFinite(amount) || amount < 0) {
+    showToast('Salary must be a non-negative number.', 'error');
+    input.focus();
+    return;
+  }
+  saveFinanceSalary(button, employeeId, amount);
+}
+
+async function saveFinanceSalary(button, employeeId, amount) {
+  if (!financeMonthInput) return;
+  const month = financeMonthInput.value || getCurrentPayrollMonthValue();
+  financeMonthInput.value = month;
+  setButtonLoading(button, true);
+  try {
+    const res = await apiFetch('/api/finance/salaries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId, month, amount })
+    });
+    if (!res.ok) throw new Error('Failed to save salary');
+    const data = await res.json();
+    financeState.month = data?.salary?.month || month;
+    if (financeMonthInput) {
+      financeMonthInput.value = financeState.month;
+    }
+    updateFinanceStateWithSalary(data?.salary, data?.employee);
+    renderFinanceTable();
+    showToast('Monthly salary saved.', 'success');
+  } catch (error) {
+    console.error('Failed to save salary', error);
+    showToast('Failed to save salary. Please try again.', 'error');
+  } finally {
+    setButtonLoading(button, false);
+  }
 }
 
 function setProfileSummaryField(id, value) {
@@ -945,7 +1206,7 @@ function renderHolidayHighlights(options = {}) {
 }
 
 async function loadHolidays(options = {}) {
-  if (!currentUser || currentUser.role !== 'manager') return;
+  if (!currentUser || !isManagerRole(currentUser)) return;
   const { force = true } = options;
   const list = document.getElementById('holidayList');
   if (list && !list.dataset.persist) {
@@ -999,7 +1260,7 @@ function renderHolidayList() {
 
 async function onHolidaySubmit(ev) {
   ev.preventDefault();
-  if (!currentUser || currentUser.role !== 'manager') return;
+  if (!currentUser || !isManagerRole(currentUser)) return;
   const dateInput = document.getElementById('holidayDate');
   const nameInput = document.getElementById('holidayName');
   const dateValue = dateInput?.value;
@@ -1033,7 +1294,7 @@ async function onHolidaySubmit(ev) {
     if (dateInput) dateInput.value = '';
     if (nameInput) nameInput.value = '';
     const reportPanel = document.getElementById('leaveReportPanel');
-    if (currentUser?.role === 'manager' && reportPanel && !reportPanel.classList.contains('hidden')) {
+    if (isManagerRole(currentUser) && reportPanel && !reportPanel.classList.contains('hidden')) {
       await loadLeaveCalendar();
     }
   } catch (err) {
@@ -1058,7 +1319,7 @@ async function onHolidayListClick(ev) {
     holidaysLoaded = true;
     renderHolidayList();
     const reportPanel = document.getElementById('leaveReportPanel');
-    if (currentUser?.role === 'manager' && reportPanel && !reportPanel.classList.contains('hidden')) {
+    if (isManagerRole(currentUser) && reportPanel && !reportPanel.classList.contains('hidden')) {
       await loadLeaveCalendar();
     }
   } catch (err) {
@@ -1377,7 +1638,7 @@ async function fetchEmailSettings({ force = false } = {}) {
 }
 
 async function loadEmailSettingsConfig({ force = false } = {}) {
-  if (!currentUser || currentUser.role !== 'manager') return;
+  if (!currentUser || !isManagerRole(currentUser)) return;
   if (!force && emailSettingsLoaded) {
     renderEmailSettingsForm();
     const statusMessage = emailSettings?.enabled
@@ -1406,7 +1667,7 @@ async function loadEmailSettingsConfig({ force = false } = {}) {
 
 async function onEmailSettingsSubmit(ev) {
   ev.preventDefault();
-  if (!currentUser || currentUser.role !== 'manager') return;
+  if (!currentUser || !isManagerRole(currentUser)) return;
   const form = ev.currentTarget;
   const submitBtn = form?.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
@@ -1527,7 +1788,7 @@ async function onEmailSettingsSubmit(ev) {
 }
 
 async function initRecruitment() {
-  if (!currentUser || currentUser.role !== 'manager') return;
+  if (!currentUser || !isManagerRole(currentUser)) return;
   if (recruitmentInitialized) return;
   recruitmentInitialized = true;
 
@@ -1615,7 +1876,7 @@ async function initRecruitment() {
 }
 
 async function loadRecruitmentPositions() {
-  if (!currentUser || currentUser.role !== 'manager') return;
+  if (!currentUser || !isManagerRole(currentUser)) return;
   const data = await getJSON('/recruitment/positions');
   recruitmentPositions = Array.isArray(data) ? data : [];
   recruitmentPositions.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -3043,7 +3304,15 @@ async function init() {
   if (reportTab) reportTab.onclick = () => showPanel('leaveReport');
   const settingsTab = document.getElementById('tabSettings');
   if (settingsTab) settingsTab.onclick = () => showPanel('settings');
-  const defaultPanel = currentUser && currentUser.role !== 'manager' ? 'profile' : 'portal';
+  const financeTab = document.getElementById('tabFinance');
+  if (financeTab) financeTab.onclick = () => showPanel('finance');
+  const defaultPanel = currentUser
+    ? isSuperAdmin(currentUser)
+      ? 'finance'
+      : isManagerRole(currentUser.role)
+        ? 'portal'
+        : 'profile'
+    : 'portal';
   showPanel(defaultPanel);
 
   document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
@@ -3185,7 +3454,7 @@ async function init() {
         }
         alert(message);
         await onEmployeeChange();
-        if (currentUser?.role === 'manager') {
+        if (isManagerRole(currentUser)) {
           await loadLeaveReport();
           await loadLeaveCalendar();
         }
@@ -3281,7 +3550,7 @@ async function init() {
   const empForm = document.getElementById('empForm');
   if (empForm) empForm.onsubmit = onEmpFormSubmit;
 
-  if (currentUser && currentUser.role === 'manager') {
+  if (isManagerRole(currentUser)) {
     await initRecruitment();
   }
 
@@ -3307,7 +3576,7 @@ async function getJSON(path) {
 async function loadEmployeesPortal() {
   const emps = await getJSON('/employees');
   let filteredEmps = emps;
-  if (currentUser && currentUser.role !== 'manager') {
+  if (currentUser && !isManagerRole(currentUser)) {
     filteredEmps = emps.filter(e => e.id == currentUser.employeeId);
   }
   ['employeeSelect', 'reportSelect'].forEach(id => {
@@ -3803,12 +4072,14 @@ async function loadEmployeesManage() {
 
   // Sort managers first by name, then remaining employees by name A-Z
   filtered.sort((a, b) => {
-    const roleA = roleKey ? (a[roleKey] || '').toLowerCase() : '';
-    const roleB = roleKey ? (b[roleKey] || '').toLowerCase() : '';
+    const roleA = roleKey ? normalizeRole(a[roleKey]) : '';
+    const roleB = roleKey ? normalizeRole(b[roleKey]) : '';
     const nameA = (a[nameKey] || '').toLowerCase();
     const nameB = (b[nameKey] || '').toLowerCase();
-    if (roleA === 'manager' && roleB !== 'manager') return -1;
-    if (roleA !== 'manager' && roleB === 'manager') return 1;
+    const aIsManager = roleA === 'manager' || roleA === 'superadmin';
+    const bIsManager = roleB === 'manager' || roleB === 'superadmin';
+    if (aIsManager && !bIsManager) return -1;
+    if (!aIsManager && bIsManager) return 1;
     return nameA.localeCompare(nameB);
   });
 

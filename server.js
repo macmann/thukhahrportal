@@ -79,6 +79,37 @@ const BODY_LIMIT = process.env.BODY_LIMIT || '3mb';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@brillar.io';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 
+const MANAGER_ROLES = new Set(['manager', 'superadmin']);
+const INACTIVE_EMPLOYEE_STATUSES = new Set([
+  'inactive',
+  'deactivated',
+  'disabled',
+  'terminated'
+]);
+
+function normalizeRole(role) {
+  return typeof role === 'string' ? role.trim().toLowerCase() : '';
+}
+
+function isManagerRole(role) {
+  return MANAGER_ROLES.has(normalizeRole(role));
+}
+
+function isSuperAdminRole(role) {
+  return normalizeRole(role) === 'superadmin';
+}
+
+function isActiveEmployeeStatus(status) {
+  const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  if (!normalized) return true;
+  return !INACTIVE_EMPLOYEE_STATUSES.has(normalized);
+}
+
+function isEmployeeActive(employee) {
+  if (!employee) return false;
+  return isActiveEmployeeStatus(employee.status);
+}
+
 // ---- PAIRING CONFIG ----
 const PAIR_REQUEST_TTL_MIN_SECONDS = Math.max(
   60,
@@ -580,7 +611,7 @@ function buildRecipientOptions(data, extras = []) {
   };
 
   users
-    .filter(user => user && user.role === 'manager')
+    .filter(user => user && isManagerRole(user.role))
     .forEach(user => {
       const email = user?.email ? String(user.email).trim() : '';
       if (!email) return;
@@ -595,7 +626,7 @@ function buildRecipientOptions(data, extras = []) {
     });
 
   employees
-    .filter(emp => getEmpRole(emp) === 'manager')
+    .filter(emp => isManagerRole(getEmpRole(emp)))
     .forEach(emp => {
       const email = getEmpEmail(emp);
       const name = emp?.name ? String(emp.name).trim() : '';
@@ -1375,7 +1406,7 @@ async function resolveUserFromSession(token) {
   await db.read();
   let user = db.data.users?.find(u => u.id === userId);
   if (!user && userId === 'admin') {
-    user = { id: 'admin', email: ADMIN_EMAIL, role: 'manager', employeeId: null };
+    user = { id: 'admin', email: ADMIN_EMAIL, role: 'superadmin', employeeId: null };
   }
   if (!user) {
     delete SESSION_TOKENS[token];
@@ -1417,11 +1448,10 @@ async function authRequired(req, res, next) {
   const token = resolveToken(req);
   const user = await resolveUserFromSession(token);
   if (user) {
-    if (user.role !== 'manager') {
+    if (!isManagerRole(user.role)) {
       const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
       const emp = employees.find(e => e.id == user.employeeId);
-      const status = (emp?.status || '').toString().toLowerCase();
-      if (!emp || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
+      if (!isEmployeeActive(emp)) {
         delete SESSION_TOKENS[token];
         if (req.cookies?.[SESSION_COOKIE_NAME]) {
           clearSessionCookie(res);
@@ -1448,8 +1478,15 @@ async function authRequired(req, res, next) {
 }
 
 function managerOnly(req, res, next) {
-  if (!req.user || req.user.role !== 'manager') {
+  if (!req.user || !isManagerRole(req.user.role)) {
     return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+}
+
+function superadminOnly(req, res, next) {
+  if (!req.user || !isSuperAdminRole(req.user.role)) {
+    return res.status(403).json({ error: 'Superadmin access required.' });
   }
   next();
 }
@@ -1460,6 +1497,9 @@ async function ensureUsersForExistingEmployees() {
   db.data.users = db.data.users || [];
   if (!Array.isArray(db.data.holidays)) {
     db.data.holidays = [];
+  }
+  if (!Array.isArray(db.data.salaries)) {
+    db.data.salaries = [];
   }
   let changed = false;
   db.data.employees.forEach(emp => {
@@ -1522,7 +1562,7 @@ init().then(async () => {
       if (user) {
         userObj = { id: user.id, email: user.email, role: user.role, employeeId: user.employeeId };
       } else if (email === ADMIN_EMAIL) {
-        userObj = { id: 'admin', email: ADMIN_EMAIL, role: 'manager', employeeId: null };
+        userObj = { id: 'admin', email: ADMIN_EMAIL, role: 'superadmin', employeeId: null };
       } else {
         return res.status(401).send('User not found');
       }
@@ -1765,11 +1805,10 @@ init().then(async () => {
 
     let userObj;
     if (user) {
-      if (user.role !== 'manager') {
+      if (!isManagerRole(user.role)) {
         const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
         const emp = employees.find(e => e.id == user.employeeId);
-        const status = (emp?.status || '').toString().toLowerCase();
-        if (!emp || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
+        if (!isEmployeeActive(emp)) {
           return res.status(403).json({ error: 'Employee account is inactive' });
         }
       }
@@ -1783,7 +1822,7 @@ init().then(async () => {
       userObj = {
         id: 'admin',
         email: ADMIN_EMAIL,
-        role: 'manager',
+        role: 'superadmin',
         employeeId: null
       };
     } else {
@@ -1806,11 +1845,10 @@ init().then(async () => {
       clearSessionCookie(res);
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    if (user.role !== 'manager') {
+    if (!isManagerRole(user.role)) {
       const employees = Array.isArray(db.data.employees) ? db.data.employees : [];
       const emp = employees.find(e => e.id == user.employeeId);
-      const status = (emp?.status || '').toString().toLowerCase();
-      if (!emp || status === 'inactive' || status === 'deactivated' || status === 'disabled') {
+      if (!isEmployeeActive(emp)) {
         delete SESSION_TOKENS[sessionToken];
         clearSessionCookie(res);
         return res.status(403).json({ error: 'Employee account is inactive' });
@@ -1940,7 +1978,7 @@ init().then(async () => {
   app.get('/employees', authRequired, async (req, res) => {
     await db.read();
     let emps = db.data.employees || [];
-    if (req.user.role !== 'manager') {
+    if (!isManagerRole(req.user.role)) {
       emps = emps.filter(e => e.id == req.user.employeeId);
     }
     res.json(emps);
@@ -2380,7 +2418,7 @@ init().then(async () => {
   app.get('/applications', authRequired, async (req, res) => {
     await db.read();
     let apps = db.data.applications || [];
-    if (req.user.role !== 'manager') {
+    if (!isManagerRole(req.user.role)) {
       apps = apps.filter(a => a.employeeId == req.user.employeeId);
     } else {
       if (req.query.employeeId) {
@@ -2998,6 +3036,28 @@ init().then(async () => {
     return trimmed ? trimmed : null;
   }
 
+  function normalizePayrollMonth(value) {
+    if (value === undefined || value === null) return null;
+    const str = String(value).trim();
+    if (!str) return null;
+    const match = str.match(/^\s*(\d{4})-(\d{1,2})\s*$/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (!Number.isFinite(year) || year < 1900 || year > 9999) {
+      return null;
+    }
+    if (!Number.isFinite(month) || month < 1 || month > 12) {
+      return null;
+    }
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
+  }
+
+  function currentPayrollMonth() {
+    const now = new Date();
+    return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
   function resolveEmployeeScope(req, providedId) {
     const requestedId = normalizeEmployeeId(providedId);
     const currentUserId = normalizeEmployeeId(req.user?.employeeId);
@@ -3008,7 +3068,7 @@ init().then(async () => {
     }
 
     const currentRole = req.user?.role;
-    if (req.user && currentRole !== 'manager' && employeeId !== currentUserId) {
+    if (req.user && !isManagerRole(currentRole) && employeeId !== currentUserId) {
       return {
         status: 403,
         error: 'Cannot access leave information for another employee.'
@@ -3032,13 +3092,12 @@ init().then(async () => {
     const employee = employees.find(emp => normalizeEmployeeId(emp?.id) === normalizedId) || null;
     const user = users.find(u => normalizeEmployeeId(u?.employeeId) === normalizedId) || null;
 
-    const role = (user?.role || getEmpRole(employee) || '').toLowerCase();
-    if (role !== 'manager') {
+    const role = normalizeRole(user?.role || getEmpRole(employee));
+    if (!isManagerRole(role)) {
       return { status: 403, error: 'Manager access required.' };
     }
 
-    const status = (employee?.status || '').toString().trim().toLowerCase();
-    if (employee && ['inactive', 'deactivated', 'disabled'].includes(status)) {
+    if (!isEmployeeActive(employee)) {
       return { status: 403, error: 'Employee account is inactive.' };
     }
 
@@ -3118,7 +3177,7 @@ init().then(async () => {
 
     if (
       currentUser &&
-      currentUser.role !== 'manager' &&
+      !isManagerRole(currentUser.role) &&
       currentUser.employeeId != employeeId
     ) {
       return { status: 403, error: 'Cannot apply for another employee' };
@@ -3194,7 +3253,7 @@ init().then(async () => {
       ? emailConfig.recipients.filter(Boolean)
       : [];
     if (!recipientEmails.length) {
-      const managers = db.data.users.filter(u => u.role === 'manager');
+      const managers = db.data.users.filter(u => isManagerRole(u?.role));
       recipientEmails = managers.map(m => m.email).filter(Boolean);
     }
     const empEmail = getEmpEmail(employee);
@@ -3280,7 +3339,7 @@ init().then(async () => {
       currentUser.employeeId == id
     );
 
-    if (currentUser.role !== 'manager' && !isSelf) {
+    if (!isManagerRole(currentUser.role) && !isSelf) {
       return { status: 403, error: 'Forbidden' };
     }
 
@@ -3379,7 +3438,7 @@ init().then(async () => {
 
   app.get('/api/leave-summary', authRequired, async (req, res) => {
     const targetEmployeeId =
-      req.user.role === 'manager' && req.query.employeeId
+      isManagerRole(req.user.role) && req.query.employeeId
         ? req.query.employeeId
         : req.user.employeeId;
 
@@ -3718,6 +3777,136 @@ init().then(async () => {
       total: summaries.length,
       employees: summaries
     });
+  });
+
+  // ========== FINANCE ==========
+  app.get('/api/finance/salaries', authRequired, superadminOnly, async (req, res) => {
+    const requestedMonth = normalizePayrollMonth(req.query?.month);
+    const month = requestedMonth || currentPayrollMonth();
+
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees) ? db.data.employees : [];
+    db.data.salaries = Array.isArray(db.data.salaries) ? db.data.salaries : [];
+
+    const salaryMap = new Map();
+    db.data.salaries.forEach(entry => {
+      if (!entry) return;
+      const entryMonth = normalizePayrollMonth(entry.month);
+      if (!entryMonth || entryMonth !== month) return;
+      const employeeId = normalizeEmployeeId(entry.employeeId);
+      if (!employeeId) return;
+      const amount = Number(entry.amount);
+      const normalizedAmount = Number.isFinite(amount) ? amount : null;
+      salaryMap.set(employeeId, {
+        employeeId,
+        month,
+        amount: normalizedAmount,
+        currency: entry.currency || null,
+        updatedAt: entry.updatedAt || null
+      });
+    });
+
+    const employees = db.data.employees
+      .filter(emp => emp && isEmployeeActive(emp))
+      .map(emp => {
+        const employeeId = normalizeEmployeeId(emp.id);
+        if (!employeeId) return null;
+        return {
+          employeeId,
+          name: emp.name || '',
+          email: getEmpEmail(emp) || '',
+          title: findValueByKeywords(emp, ['title', 'position']) || '',
+          department: findValueByKeywords(emp, ['department', 'project']) || '',
+          status: emp.status || '',
+          salary: salaryMap.get(employeeId) || null
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const nameA = (a?.name || '').toLowerCase();
+        const nameB = (b?.name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+
+    res.json({ month, employees });
+  });
+
+  app.post('/api/finance/salaries', authRequired, superadminOnly, async (req, res) => {
+    const { employeeId: rawEmployeeId, month: rawMonth, amount: rawAmount, currency: rawCurrency } =
+      req.body || {};
+
+    const employeeId = normalizeEmployeeId(rawEmployeeId);
+    if (!employeeId) {
+      return res.status(400).json({ error: 'employeeId is required.' });
+    }
+
+    const month = normalizePayrollMonth(rawMonth) || currentPayrollMonth();
+    const amount = Number(rawAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ error: 'Salary amount must be a non-negative number.' });
+    }
+
+    const currency = typeof rawCurrency === 'string'
+      ? rawCurrency.trim().toUpperCase().slice(0, 8) || null
+      : null;
+
+    await db.read();
+    db.data.employees = Array.isArray(db.data.employees) ? db.data.employees : [];
+    db.data.salaries = Array.isArray(db.data.salaries) ? db.data.salaries : [];
+
+    const employee = db.data.employees.find(emp => normalizeEmployeeId(emp.id) === employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    if (!isEmployeeActive(employee)) {
+      return res.status(400).json({ error: 'Cannot assign salary to inactive employee.' });
+    }
+
+    let record = db.data.salaries.find(entry => {
+      if (!entry) return false;
+      const entryEmployeeId = normalizeEmployeeId(entry.employeeId);
+      const entryMonth = normalizePayrollMonth(entry.month);
+      return entryEmployeeId === employeeId && entryMonth === month;
+    });
+
+    const timestamp = new Date().toISOString();
+    if (record) {
+      record.amount = amount;
+      record.month = month;
+      record.currency = currency;
+      record.updatedAt = timestamp;
+    } else {
+      record = {
+        employeeId,
+        month,
+        amount,
+        currency,
+        updatedAt: timestamp
+      };
+      db.data.salaries.push(record);
+    }
+
+    await db.write();
+
+    const responseSalary = {
+      employeeId,
+      month,
+      amount,
+      currency,
+      updatedAt: record.updatedAt
+    };
+
+    const employeeSummary = {
+      employeeId,
+      name: employee?.name || '',
+      email: getEmpEmail(employee) || '',
+      title: findValueByKeywords(employee, ['title', 'position']) || '',
+      department: findValueByKeywords(employee, ['department', 'project']) || '',
+      status: employee?.status || ''
+    };
+
+    res.json({ salary: responseSalary, employee: employeeSummary });
   });
 
   app.get('/api/openapi/user-info', authRequired, (req, res) => {
@@ -4215,7 +4404,7 @@ init().then(async () => {
     if (appIdx < 0) return res.status(404).json({ error: 'Not found' });
 
     const appObjApp = db.data.applications[appIdx];
-    if (req.user.role !== 'manager' && appObjApp.employeeId != req.user.employeeId) {
+    if (!isManagerRole(req.user.role) && appObjApp.employeeId != req.user.employeeId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
