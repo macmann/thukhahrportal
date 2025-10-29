@@ -215,7 +215,7 @@ body {
   font-weight: 600;
 }
 
-.md-button {
+.md-button { 
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -228,6 +228,33 @@ body {
   font-size: 0.95rem;
   cursor: pointer;
   transition: transform 0.18s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.md-button.is-loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.md-button.is-loading::after {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: button-spin 0.8s linear infinite;
+  display: inline-block;
+  margin-left: 8px;
+}
+
+.md-button.is-loading span.material-symbols-rounded {
+  opacity: 0.75;
 }
 
 .md-button span.material-symbols-rounded {
@@ -905,6 +932,91 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 120;
+  pointer-events: none;
+}
+
+.app-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--md-sys-color-text);
+  box-shadow: var(--md-sys-shadow-card);
+  border-left: 4px solid var(--md-sys-color-primary);
+  min-width: 260px;
+  max-width: 360px;
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: auto;
+}
+
+.app-toast span.material-symbols-rounded {
+  font-size: 22px;
+  color: var(--md-sys-color-primary);
+}
+
+.app-toast--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.app-toast--success {
+  border-left-color: #0f7b32;
+}
+
+.app-toast--success span.material-symbols-rounded {
+  color: #0f7b32;
+}
+
+.app-toast--error {
+  border-left-color: #b3261e;
+}
+
+.app-toast--error span.material-symbols-rounded {
+  color: #b3261e;
+}
+
+.app-toast--warning {
+  border-left-color: #9a6b00;
+}
+
+.app-toast--warning span.material-symbols-rounded {
+  color: #9a6b00;
+}
+
+.app-toast--info {
+  border-left-color: var(--md-sys-color-primary);
+}
+
+.app-toast--info span.material-symbols-rounded {
+  color: var(--md-sys-color-primary);
+}
+
+@media (max-width: 640px) {
+  .toast-container {
+    right: 16px;
+    left: 16px;
+    top: auto;
+    bottom: 24px;
+  }
+
+  .app-toast {
+    width: 100%;
+    max-width: none;
+  }
 }
 
 .comments-modal {
