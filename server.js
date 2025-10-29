@@ -305,16 +305,25 @@ function transporterSignature(config) {
   ].join('|');
 }
 
-async function getMailTransporter({ config: providedConfig, forceReload = false } = {}) {
+async function getMailTransporter({
+  config: providedConfig,
+  forceReload = false,
+  oauthAccessToken = null
+} = {}) {
   const config = providedConfig || (await loadEmailSettings({ force: forceReload }));
   if (!config.enabled || !config.host) {
     return null;
   }
+  const useCache = config.authType !== 'oauth2';
   const signature = transporterSignature(config);
-  if (!forceReload && emailTransporterCache.signature === signature && emailTransporterCache.transporter) {
+  if (
+    useCache &&
+    !forceReload &&
+    emailTransporterCache.signature === signature &&
+    emailTransporterCache.transporter
+  ) {
     return emailTransporterCache.transporter;
   }
-  emailOAuthTokenCache.clear();
   const transporterOptions = {
     host: config.host,
     port: config.port,
@@ -326,6 +335,16 @@ async function getMailTransporter({ config: providedConfig, forceReload = false 
   }
   if (config.authType === 'oauth2') {
     transporterOptions.authMethod = 'XOAUTH2';
+    if (oauthAccessToken && oauthAccessToken.accessToken) {
+      transporterOptions.auth = {
+        type: 'OAuth2',
+        user: config.user || config.from,
+        accessToken: oauthAccessToken.accessToken
+      };
+      if (oauthAccessToken.expiresAt) {
+        transporterOptions.auth.expires = new Date(oauthAccessToken.expiresAt);
+      }
+    }
   } else if (config.user) {
     transporterOptions.auth = {
       user: config.user,
@@ -333,7 +352,9 @@ async function getMailTransporter({ config: providedConfig, forceReload = false 
     };
   }
   const transporter = nodemailer.createTransport(transporterOptions);
-  emailTransporterCache = { transporter, signature };
+  if (useCache) {
+    emailTransporterCache = { transporter, signature };
+  }
   return transporter;
 }
 
@@ -447,7 +468,17 @@ async function sendEmail(to, subject, text) {
   try {
     const config = await loadEmailSettings();
     if (!config.enabled || !config.host) return;
-    const transporter = await getMailTransporter({ config });
+    let oauthTokenData = null;
+    if (config.authType === 'oauth2') {
+      oauthTokenData = await getOAuthAccessToken(config);
+      if (!oauthTokenData || !oauthTokenData.accessToken) {
+        throw new Error('Unable to acquire OAuth access token for SMTP.');
+      }
+    }
+    const transporter = await getMailTransporter({
+      config,
+      oauthAccessToken: oauthTokenData
+    });
     if (!transporter) return;
     const message = {
       from: config.from || config.user,
@@ -459,15 +490,14 @@ async function sendEmail(to, subject, text) {
       message.replyTo = config.replyTo;
     }
     if (config.authType === 'oauth2') {
-      const token = await getOAuthAccessToken(config);
-      if (!token || !token.accessToken) {
-        throw new Error('Unable to acquire OAuth access token for SMTP.');
-      }
       message.auth = {
         type: 'OAuth2',
         user: config.user || config.from,
-        accessToken: token.accessToken
+        accessToken: oauthTokenData.accessToken
       };
+      if (oauthTokenData.expiresAt) {
+        message.auth.expires = new Date(oauthTokenData.expiresAt);
+      }
     }
     await transporter.sendMail(message);
   } catch (err) {
