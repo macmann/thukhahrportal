@@ -358,3 +358,100 @@
   to { transform: rotate(360deg); }
 }
 
+.finance-controls-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.finance-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.finance-month-field {
+  flex: 1;
+  min-width: 220px;
+}
+
+.finance-controls .md-button {
+  align-self: flex-end;
+}
+
+.finance-table-wrapper {
+  overflow-x: auto;
+}
+
+.finance-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.finance-table th,
+.finance-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.finance-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.finance-table tbody.is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.finance-employee-name {
+  font-weight: 600;
+  display: block;
+}
+
+.finance-employee-meta {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-top: 2px;
+  display: block;
+}
+
+.finance-salary-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.finance-salary-input {
+  width: 100%;
+  max-width: 200px;
+}
+
+.finance-salary-updated {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.finance-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px;
+  color: #64748b;
+}
+
+.finance-empty .material-symbols-rounded {
+  font-size: 36px;
+  color: #4caf50;
+}
+
+.finance-empty.hidden {
+  display: none;
+}
+

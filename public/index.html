@@ -118,6 +118,10 @@
               <span class="material-symbols-rounded">settings</span>
               <span>Settings</span>
             </button>
+            <button id="tabFinance" class="tab-button hidden">
+              <span class="material-symbols-rounded">account_balance</span>
+              <span>Finance</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1031,6 +1035,58 @@
             <li>Send the token along with requests to protected routes such as <code>/api/me</code>.</li>
             <li>Copy the generated <code>curl</code> command to share with third parties embedding the widget.</li>
           </ol>
+        </div>
+      </section>
+
+      <section id="financePanel" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <span class="material-symbols-rounded">account_balance</span>
+            Finance
+          </h2>
+          <p class="panel-subtitle">Manage monthly salary allocations for active employees.</p>
+        </div>
+
+        <div class="md-card finance-controls-card">
+          <div class="finance-controls">
+            <div class="finance-month-field">
+              <label class="md-label" for="financeMonth">Payroll Month</label>
+              <div class="md-input-wrapper">
+                <span class="material-symbols-rounded">calendar_month</span>
+                <input type="month" id="financeMonth" class="md-input">
+              </div>
+            </div>
+            <button id="financeRefresh" class="md-button md-button--tonal md-button--small">
+              <span class="material-symbols-rounded">refresh</span>
+              Refresh
+            </button>
+          </div>
+          <p class="card-subtitle">Select a month to review active employees and capture their monthly salary.</p>
+        </div>
+
+        <div class="md-card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">group</span>
+            Active Employees
+          </div>
+          <p class="card-subtitle">Enter the gross monthly salary for each employee and save your updates.</p>
+          <div class="finance-table-wrapper">
+            <table class="finance-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Role / Department</th>
+                  <th>Monthly Salary</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="financeTableBody"></tbody>
+            </table>
+            <div id="financeEmptyState" class="finance-empty hidden">
+              <span class="material-symbols-rounded">check_circle</span>
+              <p>All active employees will appear here when available.</p>
+            </div>
+          </div>
         </div>
       </section>
     </main>

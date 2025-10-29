@@ -202,7 +202,8 @@ const db = {
         positions,
         candidates,
         holidays,
-        settingsDocs
+        settingsDocs,
+        salaries
       ] = await Promise.all([
         fetchCollection('employees'),
         fetchCollection('applications'),
@@ -210,7 +211,8 @@ const db = {
         fetchCollection('positions'),
         fetchCollection('candidates'),
         fetchCollection('holidays'),
-        fetchCollection('settings')
+        fetchCollection('settings'),
+        fetchCollection('salaries')
       ]);
       const settings = {};
       settingsDocs.forEach(doc => {
@@ -218,7 +220,7 @@ const db = {
         const key = doc._id || doc.key;
         settings[key] = doc.value;
       });
-      this.data = { employees, applications, users, positions, candidates, holidays, settings };
+      this.data = { employees, applications, users, positions, candidates, holidays, settings, salaries };
       lastLoadedAt = Date.now();
       logDbTrace('DB read completed', {
         durationMs: Number((performance.now() - readStart).toFixed(2))
@@ -241,7 +243,8 @@ const db = {
       positions = [],
       candidates = [],
       holidays = [],
-      settings = {}
+      settings = {},
+      salaries = []
     } = this.data;
 
     await Promise.all([
@@ -251,7 +254,8 @@ const db = {
       syncCollection('positions', positions),
       syncCollection('candidates', candidates),
       syncCollection('holidays', holidays),
-      syncSettings(settings)
+      syncSettings(settings),
+      syncCollection('salaries', salaries)
     ]);
     lastLoadedAt = Date.now();
   },
