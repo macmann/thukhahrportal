@@ -429,6 +429,7 @@ const financeMonthInput = document.getElementById('financeMonth');
 const financeRefreshButton = document.getElementById('financeRefresh');
 const financeTableBody = document.getElementById('financeTableBody');
 const financeEmptyState = document.getElementById('financeEmptyState');
+const financeSaveAllButton = document.getElementById('financeSaveAll');
 let financeInitialized = false;
 let financeState = { month: '', employees: [] };
 let financeLoading = false;
@@ -640,7 +641,9 @@ function setupFinanceModule() {
       loadFinanceData(true);
     });
   }
-  financeTableBody.addEventListener('click', onFinanceTableClick);
+  if (financeSaveAllButton) {
+    financeSaveAllButton.addEventListener('click', onFinanceSaveAllClick);
+  }
 }
 
 function setFinanceLoading(isLoading) {
@@ -650,6 +653,9 @@ function setFinanceLoading(isLoading) {
   }
   if (financeMonthInput) {
     financeMonthInput.disabled = financeLoading;
+  }
+  if (financeSaveAllButton) {
+    financeSaveAllButton.disabled = financeLoading;
   }
   if (financeTableBody) {
     financeTableBody.classList.toggle('is-loading', financeLoading);
@@ -703,13 +709,12 @@ function renderFinanceTable() {
         .map(part => part && part.trim())
         .filter(Boolean)
         .join(' • ');
-      const emailDisplay = emp?.email ? escapeHtml(emp.email) : '—';
+      const nameDisplay = escapeHtml(emp?.name || 'Unknown');
       const jobDisplay = jobLine ? escapeHtml(jobLine) : '—';
       return `
         <tr data-employee-id="${escapeHtml(emp.employeeId || '')}">
           <td>
-            <span class="finance-employee-name">${escapeHtml(emp?.name || 'Unknown')}</span>
-            <span class="finance-employee-meta">${emailDisplay}</span>
+            <span class="finance-employee-name">${nameDisplay}</span>
           </td>
           <td>
             <span class="finance-employee-meta">${jobDisplay}</span>
@@ -719,12 +724,6 @@ function renderFinanceTable() {
               <input class="md-input finance-salary-input" type="number" min="0" step="0.01" value="${escapeHtml(inputValue)}" placeholder="0.00" data-salary-input>
               <span class="finance-salary-updated">${escapeHtml(updatedText)}</span>
             </div>
-          </td>
-          <td>
-            <button type="button" class="md-button md-button--filled md-button--small" data-action="finance-save" data-employee-id="${escapeHtml(emp.employeeId || '')}">
-              <span class="material-symbols-rounded">save</span>
-              Save
-            </button>
           </td>
         </tr>
       `;
@@ -766,59 +765,81 @@ function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
   };
 }
 
-function onFinanceTableClick(event) {
-  const button = event.target.closest('[data-action="finance-save"]');
-  if (!button) return;
+function onFinanceSaveAllClick() {
   if (!isSuperAdmin(currentUser)) {
     showToast('You do not have permission to update salaries.', 'error');
     return;
   }
-  const employeeId = button.dataset.employeeId;
-  if (!employeeId) return;
-  const row = button.closest('tr');
-  if (!row) return;
-  const input = row.querySelector('[data-salary-input]');
-  if (!input) return;
-  const rawValue = input.value.trim();
-  if (!rawValue) {
-    showToast('Enter a salary amount before saving.', 'warning');
-    input.focus();
+  if (!financeTableBody) return;
+  const rows = Array.from(financeTableBody.querySelectorAll('tr'));
+  if (!rows.length) {
+    showToast('There are no finance entries to save.', 'info');
     return;
   }
-  const amount = Number(rawValue);
-  if (!Number.isFinite(amount) || amount < 0) {
-    showToast('Salary must be a non-negative number.', 'error');
-    input.focus();
+
+  const updates = [];
+  for (const row of rows) {
+    const employeeId = row.dataset.employeeId;
+    if (!employeeId) continue;
+    const input = row.querySelector('[data-salary-input]');
+    if (!input) continue;
+    const rawValue = input.value.trim();
+    const employeeName = row.querySelector('.finance-employee-name')?.textContent?.trim() || 'this employee';
+    if (!rawValue) {
+      showToast(`Enter a salary amount for ${employeeName}.`, 'warning');
+      input.focus();
+      return;
+    }
+    const amount = Number(rawValue);
+    if (!Number.isFinite(amount) || amount < 0) {
+      showToast(`Salary for ${employeeName} must be a non-negative number.`, 'error');
+      input.focus();
+      return;
+    }
+    updates.push({ employeeId, amount });
+  }
+
+  if (!updates.length) {
+    showToast('No salary entries to save.', 'info');
     return;
   }
-  saveFinanceSalary(button, employeeId, amount);
+
+  saveFinanceSalaries(financeSaveAllButton, updates);
 }
 
-async function saveFinanceSalary(button, employeeId, amount) {
+async function saveFinanceSalaries(button, updates) {
   if (!financeMonthInput) return;
   const month = financeMonthInput.value || getCurrentPayrollMonthValue();
   financeMonthInput.value = month;
-  setButtonLoading(button, true);
+  if (button) {
+    setButtonLoading(button, true);
+  }
   try {
-    const res = await apiFetch('/api/finance/salaries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeId, month, amount })
-    });
-    if (!res.ok) throw new Error('Failed to save salary');
-    const data = await res.json();
-    financeState.month = data?.salary?.month || month;
-    if (financeMonthInput) {
-      financeMonthInput.value = financeState.month;
+    for (const { employeeId, amount } of updates) {
+      const res = await apiFetch('/api/finance/salaries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId, month, amount })
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to save salary for employee ${employeeId}`);
+      }
+      const data = await res.json();
+      financeState.month = data?.salary?.month || month;
+      if (financeMonthInput) {
+        financeMonthInput.value = financeState.month;
+      }
+      updateFinanceStateWithSalary(data?.salary, data?.employee);
     }
-    updateFinanceStateWithSalary(data?.salary, data?.employee);
     renderFinanceTable();
-    showToast('Monthly salary saved.', 'success');
+    showToast('Monthly salaries saved.', 'success');
   } catch (error) {
-    console.error('Failed to save salary', error);
-    showToast('Failed to save salary. Please try again.', 'error');
+    console.error('Failed to save salaries', error);
+    showToast('Failed to save salaries. Please try again.', 'error');
   } finally {
-    setButtonLoading(button, false);
+    if (button) {
+      setButtonLoading(button, false);
+    }
   }
 }
 

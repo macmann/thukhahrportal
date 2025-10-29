@@ -385,6 +385,16 @@
   overflow-x: auto;
 }
 
+.finance-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.finance-actions .md-button {
+  min-width: 140px;
+}
+
 .finance-table {
   width: 100%;
   border-collapse: collapse;
