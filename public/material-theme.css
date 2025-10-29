@@ -875,12 +875,6 @@ body {
   z-index: 100;
 }
 
-#candidateDetailsModal {
-  align-items: stretch;
-  justify-content: stretch;
-  padding: 0;
-}
-
 .modal-card {
   width: min(420px, 100%);
   background: rgba(255, 255, 255, 0.95);
@@ -906,6 +900,23 @@ body {
 
 .employee-modal {
   max-height: 90vh;
+}
+
+#empModal {
+  align-items: flex-start;
+  padding-top: clamp(32px, 8vh, 64px);
+  padding-bottom: clamp(32px, 8vh, 64px);
+  overflow-y: auto;
+}
+
+#empModal .modal-card {
+  margin: 0 auto;
+}
+
+#candidateDetailsModal {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
 }
 
 .employee-modal__fields {
