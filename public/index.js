@@ -401,6 +401,60 @@ function apiFetch(path, options = {}) {
   return fetch(API + path, options);
 }
 
+const toastContainer = document.getElementById('toastContainer');
+const toastIcons = {
+  success: 'check_circle',
+  error: 'error',
+  warning: 'warning',
+  info: 'info'
+};
+
+function showToast(message, type = 'info') {
+  if (!toastContainer) {
+    window.alert(message);
+    return;
+  }
+  const toast = document.createElement('div');
+  toast.className = `app-toast app-toast--${type}`;
+
+  const icon = document.createElement('span');
+  icon.className = 'material-symbols-rounded';
+  icon.textContent = toastIcons[type] || toastIcons.info;
+
+  const text = document.createElement('span');
+  text.textContent = message;
+
+  toast.append(icon, text);
+  toastContainer.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add('app-toast--visible'));
+
+  const removeToast = () => {
+    toast.classList.remove('app-toast--visible');
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+  };
+
+  const duration = Math.min(Math.max(message.length * 50, 3000), 7000);
+  const timeoutId = setTimeout(removeToast, duration);
+  toast.addEventListener('click', () => {
+    clearTimeout(timeoutId);
+    removeToast();
+  });
+}
+
+function setButtonLoading(button, isLoading) {
+  if (!(button instanceof HTMLElement)) return;
+  if (isLoading) {
+    button.dataset.loading = 'true';
+    button.classList.add('is-loading');
+    button.disabled = true;
+  } else if (button.dataset.loading) {
+    button.classList.remove('is-loading');
+    button.disabled = false;
+    delete button.dataset.loading;
+  }
+}
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str).replace(/[&<>"']/g, ch => ({
@@ -3310,7 +3364,7 @@ function onApplySubmit(ev) {
   const halfDay = document.getElementById('halfDay').checked;
   const halfDayPeriod = halfDay ? document.getElementById('halfDayPeriod').value : null;
   if (!empId || !type || !from || !to) {
-    alert('Fill all fields!');
+    showToast('Please fill in all required leave details before continuing.', 'warning');
     return;
   }
   pendingApply = { employeeId: +empId, type, from, to, halfDay, halfDayPeriod };
@@ -3362,23 +3416,38 @@ async function onChangePassSubmit(ev) {
 }
 async function onReasonSubmit(ev) {
   ev.preventDefault();
-  const reason = document.getElementById('reasonInput').value.trim();
-  if (!pendingApply || !reason) return;
-  const payload = { ...pendingApply, reason };
-  const res = await apiFetch('/applications', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  });
-  if (res.ok) {
-    alert('Leave applied.');
-    document.getElementById('applyForm').reset();
-    closeReasonModal();
-    await onEmployeeChange();
-  } else {
-    alert('Error applying leave.');
+  if (!pendingApply) return;
+  const reasonInput = document.getElementById('reasonInput');
+  const reason = reasonInput.value.trim();
+  if (!reason) {
+    showToast('Please share a reason for your leave request.', 'warning');
+    reasonInput.focus();
+    return;
   }
-  pendingApply = null;
+  const submitBtn = ev.submitter || document.querySelector('#reasonForm button[type="submit"]');
+  setButtonLoading(submitBtn, true);
+  const payload = { ...pendingApply, reason };
+  try {
+    const res = await apiFetch('/applications', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      showToast('Leave applied successfully.', 'success');
+      document.getElementById('applyForm').reset();
+      closeReasonModal();
+      await onEmployeeChange();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || 'Error applying leave.', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Unable to apply for leave right now. Please try again.', 'error');
+  } finally {
+    setButtonLoading(submitBtn, false);
+  }
 }
 
 function renderPreviousLeaves(apps, emp) {
@@ -3471,11 +3540,11 @@ async function loadManagerApplications() {
           </div>
           <textarea id="remark-${app.id}" placeholder="Add an optional remark…"></textarea>
           <div class="list-card__actions">
-            <button class="md-button md-button--success md-button--small" onclick="approveApp(${app.id}, true)">
+            <button class="md-button md-button--success md-button--small" onclick="approveApp(${app.id}, true, this)">
               <span class="material-symbols-rounded">check</span>
               Approve
             </button>
-            <button class="md-button md-button--danger md-button--small" onclick="approveApp(${app.id}, false)">
+            <button class="md-button md-button--danger md-button--small" onclick="approveApp(${app.id}, false, this)">
               <span class="material-symbols-rounded">close</span>
               Reject
             </button>
@@ -3603,21 +3672,45 @@ async function loadManagerUpcomingLeaves(showCancel = false) {
   }).join('');
 }
 
-window.approveApp = async function(id, approve) {
+window.approveApp = async function(id, approve, buttonEl) {
   const remark = document.getElementById(`remark-${id}`)?.value || '';
-  const res = await apiFetch(`/applications/${id}/${approve?'approve':'reject'}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify({
-      approver: currentUser ? currentUser.email : '',
-      remark: remark
-    })
-  });
-  if (res.ok) {
-    alert(approve ? 'Leave approved.' : 'Leave rejected.');
-    await loadManagerApplications();
-  } else {
-    alert('Error updating leave.');
+  const relatedButtons = buttonEl instanceof HTMLElement
+    ? Array.from(buttonEl.closest('.list-card__actions')?.querySelectorAll('button') || []).filter(btn => btn !== buttonEl)
+    : [];
+
+  if (buttonEl instanceof HTMLElement) {
+    setButtonLoading(buttonEl, true);
+    relatedButtons.forEach(btn => (btn.disabled = true));
+  }
+
+  let success = false;
+
+  try {
+    const res = await apiFetch(`/applications/${id}/${approve ? 'approve' : 'reject'}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approver: currentUser ? currentUser.email : '',
+        remark
+      })
+    });
+
+    if (res.ok) {
+      success = true;
+      showToast(approve ? 'Leave approved.' : 'Leave rejected.', 'success');
+      await loadManagerApplications();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || 'Error updating leave.', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Unable to update leave at the moment. Please try again.', 'error');
+  } finally {
+    if (!success) {
+      setButtonLoading(buttonEl, false);
+      relatedButtons.forEach(btn => (btn.disabled = false));
+    }
   }
 };
 
