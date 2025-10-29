@@ -3018,6 +3018,58 @@ init().then(async () => {
     return { employeeId };
   }
 
+  async function resolveManagerAccess(employeeId) {
+    const normalizedId = normalizeEmployeeId(employeeId);
+    if (!normalizedId) {
+      return { status: 400, error: 'employeeId query parameter is required.' };
+    }
+
+    await db.read();
+
+    const employees = Array.isArray(db.data?.employees) ? db.data.employees : [];
+    const users = Array.isArray(db.data?.users) ? db.data.users : [];
+
+    const employee = employees.find(emp => normalizeEmployeeId(emp?.id) === normalizedId) || null;
+    const user = users.find(u => normalizeEmployeeId(u?.employeeId) === normalizedId) || null;
+
+    const role = (user?.role || getEmpRole(employee) || '').toLowerCase();
+    if (role !== 'manager') {
+      return { status: 403, error: 'Manager access required.' };
+    }
+
+    const status = (employee?.status || '').toString().trim().toLowerCase();
+    if (employee && ['inactive', 'deactivated', 'disabled'].includes(status)) {
+      return { status: 403, error: 'Employee account is inactive.' };
+    }
+
+    return { employeeId: normalizedId, employee, user, employees, users };
+  }
+
+  function isLeaveInRange(app, rangeStart, rangeEnd) {
+    if (!app) return false;
+    const start = rangeStart ? new Date(rangeStart) : null;
+    const end = rangeEnd ? new Date(rangeEnd) : null;
+    const from = new Date(app.from);
+    const to = new Date(app.to);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      return false;
+    }
+    if (start && to < start) return false;
+    if (end && from > end) return false;
+    return true;
+  }
+
+  function buildLeaveWindowEntry(app, employeesById) {
+    const summary = toLeaveApplicationSummary(app);
+    const employee = employeesById.get(String(summary.employeeId)) || null;
+    return {
+      ...summary,
+      employeeName: employee?.name || null,
+      title: findValueByKeywords(employee, ['title', 'position']) || null,
+      project: findValueByKeywords(employee, ['project', 'department']) || null
+    };
+  }
+
   function toLeaveApplicationSummary(app) {
     const summary = {
       id: app.id,
@@ -3528,6 +3580,146 @@ init().then(async () => {
   app.post('/api/leaves', handleLeaveApplicationRequest);
   app.post('/api/apply-leave', handleLeaveApplicationRequest);
 
+  app.get('/api/management/overview', async (req, res) => {
+    const access = await resolveManagerAccess(req.query?.employeeId);
+    if (access?.error) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const { employees } = access;
+    const employeesById = new Map(
+      (employees || []).map(emp => [String(emp.id), emp])
+    );
+
+    const applications = Array.isArray(db.data?.applications)
+      ? db.data.applications
+      : [];
+    const approvedApps = applications.filter(
+      app => (app?.status || '').toString().toLowerCase() === 'approved'
+    );
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(today);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const sevenDaysOut = new Date(today);
+    sevenDaysOut.setDate(sevenDaysOut.getDate() + 7);
+
+    const onLeaveToday = approvedApps
+      .filter(app => isLeaveInRange(app, today, endOfToday))
+      .map(app => buildLeaveWindowEntry(app, employeesById))
+      .sort((a, b) => (a.employeeName || '').localeCompare(b.employeeName || ''));
+
+    const onLeaveNext7Days = approvedApps
+      .filter(app => isLeaveInRange(app, tomorrow, sevenDaysOut))
+      .map(app => buildLeaveWindowEntry(app, employeesById))
+      .sort((a, b) => {
+        const aDate = new Date(a.from).getTime();
+        const bDate = new Date(b.from).getTime();
+        if (!Number.isFinite(aDate) || !Number.isFinite(bDate)) {
+          return (a.employeeName || '').localeCompare(b.employeeName || '');
+        }
+        return aDate - bDate;
+      });
+
+    const leaveApplications = applications
+      .map(app => {
+        const summary = toLeaveApplicationSummary(app);
+        const employee = employeesById.get(String(summary.employeeId)) || null;
+        return {
+          ...summary,
+          employeeName: employee?.name || null,
+          title: findValueByKeywords(employee, ['title', 'position']) || null,
+          project: findValueByKeywords(employee, ['project', 'department']) || null
+        };
+      })
+      .sort((a, b) => (b.id || 0) - (a.id || 0));
+
+    res.json({
+      employeeId: access.employeeId,
+      manager: {
+        employeeId: access.employee?.id || access.employeeId,
+        name: access.employee?.name || null,
+        email: getEmpEmail(access.employee) || access.user?.email || null
+      },
+      onLeaveToday,
+      onLeaveNext7Days,
+      leaveApplications
+    });
+  });
+
+  app.get('/api/management/employees', async (req, res) => {
+    const access = await resolveManagerAccess(req.query?.employeeId);
+    if (access?.error) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const searchTerm = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
+    const nameFilter = typeof req.query?.name === 'string' ? req.query.name.trim() : '';
+    const titleFilter = typeof req.query?.title === 'string' ? req.query.title.trim() : '';
+    const projectFilter = typeof req.query?.project === 'string' ? req.query.project.trim() : '';
+    const managerFilter = typeof req.query?.manager === 'string' ? req.query.manager.trim() : '';
+
+    const toComparable = value => (value || '').toString().trim().toLowerCase();
+
+    const matches = (value, filter) => {
+      if (!filter) return true;
+      return toComparable(value).includes(filter.toLowerCase());
+    };
+
+    const employees = Array.isArray(access.employees) ? access.employees : [];
+
+    const summaries = employees
+      .map(emp => {
+        const name = emp?.name || '';
+        const title = findValueByKeywords(emp, ['title', 'position']) || '';
+        const project = findValueByKeywords(emp, ['project', 'department']) || '';
+        const manager = findValueByKeywords(emp, ['appraiser', 'manager', 'supervisor', 'reporting']) || '';
+        const status = typeof emp?.status === 'string' ? emp.status : '';
+        return {
+          employeeId: emp?.id || null,
+          name,
+          email: getEmpEmail(emp) || '',
+          title,
+          project,
+          manager,
+          status,
+          role: getEmpRole(emp)
+        };
+      })
+      .filter(summary => {
+        if (!summary.employeeId) return false;
+        if (searchTerm) {
+          const combined = [
+            summary.name,
+            summary.title,
+            summary.project,
+            summary.manager,
+            summary.email
+          ]
+            .map(value => value || '')
+            .join(' ')
+            .toLowerCase();
+          if (!combined.includes(searchTerm.toLowerCase())) {
+            return false;
+          }
+        }
+        if (!matches(summary.name, nameFilter)) return false;
+        if (!matches(summary.title, titleFilter)) return false;
+        if (!matches(summary.project, projectFilter)) return false;
+        if (!matches(summary.manager, managerFilter)) return false;
+        return true;
+      })
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    res.json({
+      employeeId: access.employeeId,
+      total: summaries.length,
+      employees: summaries
+    });
+  });
+
   app.get('/api/openapi/user-info', authRequired, (req, res) => {
     const userInfoOpenApi = {
       openapi: '3.0.0',
@@ -3563,6 +3755,188 @@ init().then(async () => {
     res
       .type('application/json')
       .send(JSON.stringify(leaveOpenApi, null, 2));
+  });
+
+  app.get('/api/managementopenapi', (req, res) => {
+    const managementOpenApi = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Brillar HR Management APIs',
+        version: '1.0.0',
+        description:
+          'Unauthenticated endpoints that provide aggregated employee and leave information for manager accounts.'
+      },
+      servers: [{ url: 'http://localhost:3000' }],
+      paths: {
+        '/api/management/overview': {
+          get: {
+            summary: 'Get aggregated leave insights for the organization.',
+            parameters: [
+              {
+                in: 'query',
+                name: 'employeeId',
+                required: true,
+                schema: { type: 'string' },
+                description: 'Employee identifier of the manager requesting access.'
+              }
+            ],
+            responses: {
+              200: {
+                description: 'Aggregated leave information for the organization.',
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/ManagementOverviewResponse' }
+                  }
+                }
+              },
+              400: { description: 'Missing or invalid employee identifier.' },
+              403: { description: 'The supplied employee identifier does not belong to a manager.' }
+            }
+          }
+        },
+        '/api/management/employees': {
+          get: {
+            summary: 'Search and list employees with optional filters.',
+            parameters: [
+              {
+                in: 'query',
+                name: 'employeeId',
+                required: true,
+                schema: { type: 'string' },
+                description: 'Employee identifier of the manager requesting access.'
+              },
+              {
+                in: 'query',
+                name: 'q',
+                required: false,
+                schema: { type: 'string' },
+                description: 'Free-text search across name, title, project, manager and email.'
+              },
+              {
+                in: 'query',
+                name: 'name',
+                required: false,
+                schema: { type: 'string' },
+                description: 'Filter employees by name.'
+              },
+              {
+                in: 'query',
+                name: 'title',
+                required: false,
+                schema: { type: 'string' },
+                description: 'Filter employees by job title or position.'
+              },
+              {
+                in: 'query',
+                name: 'project',
+                required: false,
+                schema: { type: 'string' },
+                description: 'Filter employees by project or department.'
+              },
+              {
+                in: 'query',
+                name: 'manager',
+                required: false,
+                schema: { type: 'string' },
+                description: 'Filter employees by reporting manager or appraiser.'
+              }
+            ],
+            responses: {
+              200: {
+                description: 'Filtered employee listing.',
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/ManagementEmployeeSearchResponse' }
+                  }
+                }
+              },
+              400: { description: 'Missing or invalid employee identifier.' },
+              403: { description: 'The supplied employee identifier does not belong to a manager.' }
+            }
+          }
+        }
+      },
+      components: {
+        schemas: {
+          LeaveWindowEntry: {
+            type: 'object',
+            properties: {
+              id: { type: ['integer', 'string'] },
+              employeeId: { type: ['string', 'null'] },
+              employeeName: { type: ['string', 'null'] },
+              title: { type: ['string', 'null'] },
+              project: { type: ['string', 'null'] },
+              type: { type: ['string', 'null'] },
+              from: { type: ['string', 'null'], format: 'date-time' },
+              to: { type: ['string', 'null'], format: 'date-time' },
+              status: { type: ['string', 'null'] },
+              reason: { type: ['string', 'null'] },
+              halfDay: { type: 'boolean' },
+              halfDayType: { type: ['string', 'null'] },
+              days: { type: 'number' },
+              approvedBy: { type: ['string', 'null'] },
+              approverRemark: { type: ['string', 'null'] },
+              approvedAt: { type: ['string', 'null'], format: 'date-time' },
+              cancelledAt: { type: ['string', 'null'], format: 'date-time' }
+            }
+          },
+          ManagementOverviewResponse: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
+              manager: {
+                type: 'object',
+                properties: {
+                  employeeId: { type: ['string', 'null'] },
+                  name: { type: ['string', 'null'] },
+                  email: { type: ['string', 'null'], format: 'email' }
+                }
+              },
+              onLeaveToday: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LeaveWindowEntry' }
+              },
+              onLeaveNext7Days: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LeaveWindowEntry' }
+              },
+              leaveApplications: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LeaveWindowEntry' }
+              }
+            }
+          },
+          ManagementEmployeeSummary: {
+            type: 'object',
+            properties: {
+              employeeId: { type: ['string', 'integer'] },
+              name: { type: ['string', 'null'] },
+              email: { type: ['string', 'null'], format: 'email' },
+              title: { type: ['string', 'null'] },
+              project: { type: ['string', 'null'] },
+              manager: { type: ['string', 'null'] },
+              status: { type: ['string', 'null'] },
+              role: { type: ['string', 'null'] }
+            }
+          },
+          ManagementEmployeeSearchResponse: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
+              total: { type: 'integer' },
+              employees: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/ManagementEmployeeSummary' }
+              }
+            }
+          }
+        }
+      }
+    };
+
+    res
+      .type('application/json')
+      .send(JSON.stringify(managementOpenApi, null, 2));
   });
 
   app.get('/api/openapi', authRequired, (req, res) => {
