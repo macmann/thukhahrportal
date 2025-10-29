@@ -904,6 +904,16 @@ body {
   padding-right: 4px;
 }
 
+.employee-modal {
+  max-height: 90vh;
+}
+
+.employee-modal__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 #candidateHireFields {
   display: contents;
 }

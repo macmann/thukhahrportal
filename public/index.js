@@ -3023,6 +3023,7 @@ function fileToBase64(file) {
 let pendingApply = null;
 let editId = null;
 let drawerEditId = null;
+let empModalKeydownHandler = null;
 
 async function init() {
   document.getElementById('employeeSelect').addEventListener('change', onEmployeeChange);
@@ -3254,9 +3255,20 @@ async function init() {
       loadLeaveRange(document.getElementById('reportStart').value, document.getElementById('reportEnd').value);
     };
   }
-  document.getElementById('drawerCancelBtn').onclick = closeEmpDrawer;
-  document.getElementById('drawerCloseBtn').onclick = closeEmpDrawer;
-  document.getElementById('empDrawerForm').onsubmit = onEmpDrawerSubmit;
+  const empModal = document.getElementById('empModal');
+  if (empModal) {
+    empModal.addEventListener('click', ev => {
+      if (ev.target === empModal) {
+        closeEmpDrawer();
+      }
+    });
+  }
+  const empModalCancelBtn = document.getElementById('empModalCancelBtn');
+  if (empModalCancelBtn) empModalCancelBtn.onclick = closeEmpDrawer;
+  const empModalCloseBtn = document.getElementById('empModalCloseBtn');
+  if (empModalCloseBtn) empModalCloseBtn.onclick = closeEmpDrawer;
+  const empModalForm = document.getElementById('empModalForm');
+  if (empModalForm) empModalForm.addEventListener('submit', onEmpDrawerSubmit);
 
   // Change password handlers
   document.getElementById('changePassBtn').onclick = openChangePassModal;
@@ -3928,36 +3940,65 @@ function makeDynamicFieldId(prefix, key) {
   return `${prefix}-${suffix}`;
 }
 
+function formatDateInputValue(value) {
+  if (!value) return '';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim();
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function buildDynamicFieldsHtml(fields = [], initial = {}, prefix = 'field') {
   return fields.map(field => {
     const fieldId = makeDynamicFieldId(prefix, field.key);
     const rawValue = initial[field.key];
     const value = rawValue === null || typeof rawValue === 'undefined' ? '' : rawValue;
     const requiredAttr = field.required ? 'required' : '';
-    if (field.type === 'select') {
+    const fieldType = typeof field.type === 'string' ? field.type.toLowerCase() : 'text';
+    const labelText = field.label || field.key;
+    if (fieldType === 'select') {
       const options = Array.isArray(field.options) ? field.options : [];
       const optionsMarkup = options.map(opt => {
-        const optionValue = opt === null || typeof opt === 'undefined' ? '' : String(opt);
-        const selected = String(value) === optionValue ? 'selected' : '';
-        return `<option value="${escapeHtml(optionValue)}" ${selected}>${escapeHtml(optionValue)}</option>`;
+        let optionValue = opt;
+        let optionLabel = opt;
+        if (opt && typeof opt === 'object') {
+          optionValue = Object.prototype.hasOwnProperty.call(opt, 'value') ? opt.value : opt.label;
+          optionLabel = Object.prototype.hasOwnProperty.call(opt, 'label') ? opt.label : opt.value;
+        }
+        optionValue = optionValue === null || typeof optionValue === 'undefined' ? '' : String(optionValue);
+        optionLabel = optionLabel === null || typeof optionLabel === 'undefined' ? optionValue : String(optionLabel);
+        const isSelected = String(value).toLowerCase() === optionValue.toLowerCase();
+        const selected = isSelected ? 'selected' : '';
+        return `<option value="${escapeHtml(optionValue)}" ${selected}>${escapeHtml(optionLabel)}</option>`;
       }).join('');
       return `
         <div class="md-field">
-          <label class="md-label" for="${fieldId}">${escapeHtml(field.label || field.key)}</label>
+          <label class="md-label" for="${fieldId}">${escapeHtml(labelText || '')}</label>
           <div class="md-input-wrapper">
             <select name="${field.key}" id="${fieldId}" class="md-select" ${requiredAttr}>
+              ${requiredAttr ? '' : '<option value=""></option>'}
               ${optionsMarkup}
             </select>
           </div>
         </div>
       `;
     }
-    const inputType = field.type && field.type !== 'select' ? field.type : 'text';
+    let inputType = fieldType && fieldType !== 'select' ? fieldType : 'text';
+    let inputValue = value;
+    if (fieldType === 'date') {
+      inputType = 'date';
+      inputValue = formatDateInputValue(value);
+    }
     return `
       <div class="md-field">
-        <label class="md-label" for="${fieldId}">${escapeHtml(field.label || field.key)}</label>
+        <label class="md-label" for="${fieldId}">${escapeHtml(labelText || '')}</label>
         <div class="md-input-wrapper">
-          <input name="${field.key}" id="${fieldId}" class="md-input" type="${escapeHtml(inputType)}" value="${escapeHtml(String(value))}" ${requiredAttr}>
+          <input name="${field.key}" id="${fieldId}" class="md-input" type="${escapeHtml(inputType)}" value="${escapeHtml(String(inputValue))}" ${requiredAttr}>
         </div>
       </div>
     `;
@@ -3999,16 +4040,48 @@ function buildEmployeePayload(formEl, fields = []) {
 function openEmpDrawer({title, fields = [], initial = {}}) {
   drawerEditId = initial.id || null;
   currentDrawerFields = Array.isArray(fields) ? fields : [];
-  document.getElementById('drawerTitle').textContent = title;
+  const titleEl = document.getElementById('empModalTitle');
+  if (titleEl) titleEl.textContent = title;
   const fieldHtml = buildDynamicFieldsHtml(currentDrawerFields, initial, 'drawer');
-  document.getElementById('drawerFields').innerHTML = fieldHtml;
-  document.getElementById('empDrawer').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('empDrawer').classList.add('show'),10);
-  setTimeout(()=>document.getElementById('drawerPanel').focus(),100);
+  const fieldsEl = document.getElementById('empModalFields');
+  if (fieldsEl) fieldsEl.innerHTML = fieldHtml;
+  const formEl = document.getElementById('empModalForm');
+  if (formEl) {
+    formEl.reset();
+    formEl.scrollTop = 0;
+  }
+  const modal = document.getElementById('empModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    if (empModalKeydownHandler) {
+      document.removeEventListener('keydown', empModalKeydownHandler);
+    }
+    empModalKeydownHandler = ev => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        closeEmpDrawer();
+      }
+    };
+    document.addEventListener('keydown', empModalKeydownHandler);
+    setTimeout(() => {
+      const focusTarget = modal.querySelector('#empModalFields input, #empModalFields select, #empModalFields textarea');
+      if (focusTarget) focusTarget.focus();
+    }, 50);
+  }
 }
 function closeEmpDrawer() {
-  document.getElementById('empDrawer').classList.remove('show');
-  setTimeout(()=>document.getElementById('empDrawer').classList.add('hidden'), 300);
+  const modal = document.getElementById('empModal');
+  if (modal) modal.classList.add('hidden');
+  if (empModalKeydownHandler) {
+    document.removeEventListener('keydown', empModalKeydownHandler);
+    empModalKeydownHandler = null;
+  }
+  const formEl = document.getElementById('empModalForm');
+  if (formEl) formEl.reset();
+  const fieldsEl = document.getElementById('empModalFields');
+  if (fieldsEl) fieldsEl.innerHTML = '';
+  currentDrawerFields = [];
+  drawerEditId = null;
 }
 
 // Drawer submit
@@ -4042,8 +4115,40 @@ async function getDynamicEmployeeFields() {
     .filter(k => k !== 'id' && k !== 'leaveBalances' && !(typeof k === 'string' && k.startsWith('_')))
     .map(k=>{
       let isRequired = requiredFields.includes(k.toLowerCase());
-      if (['status','Status'].includes(k)) return {key:k,label:'Status',type:'select',options:['active','inactive'],required:isRequired};
-      return {key:k,label:k.charAt(0).toUpperCase()+k.slice(1),type:'text',required:isRequired};
+      const keyLower = k.toLowerCase();
+      const baseLabel = k.charAt(0).toUpperCase()+k.slice(1);
+      if (keyLower === 'status') {
+        const baseOptions = ['Active', 'Inactive'];
+        const sampleValue = sample[k];
+        if (sampleValue && typeof sampleValue === 'string') {
+          const hasValue = baseOptions.some(opt => opt.toLowerCase() === sampleValue.toLowerCase());
+          if (!hasValue) {
+            baseOptions.unshift(sampleValue);
+          }
+        }
+        return {key:k,label:'Status',type:'select',options:baseOptions,required:isRequired};
+      }
+      if (keyLower === 'active') {
+        const activeOptions = ['Yes', 'No'];
+        const sampleValue = sample[k];
+        if (sampleValue && typeof sampleValue === 'string') {
+          const hasValue = activeOptions.some(opt => opt.toLowerCase() === sampleValue.toLowerCase());
+          if (!hasValue) {
+            activeOptions.unshift(sampleValue);
+          }
+        }
+        return {key:k,label:'Active',type:'select',options:activeOptions,required:isRequired};
+      }
+      if (
+        keyLower.includes('date') ||
+        keyLower.includes('dob') ||
+        keyLower.includes('birth') ||
+        keyLower.includes('join') ||
+        keyLower.includes('hire')
+      ) {
+        return {key:k,label:baseLabel,type:'date',required:isRequired};
+      }
+      return {key:k,label:baseLabel,type:'text',required:isRequired};
     });
   return [...normalFields, ...leaveFields];
 }
