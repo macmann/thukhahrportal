@@ -456,21 +456,25 @@
           </table>
         </div>
 
-        <div id="empDrawer" class="drawer-backdrop hidden">
-          <div id="drawerPanel" class="drawer-panel" tabindex="-1">
-            <div class="drawer-header">
-              <h3 id="drawerTitle" class="drawer-title">Add Employee</h3>
-              <button id="drawerCloseBtn" class="drawer-close material-symbols-rounded" type="button">close</button>
-            </div>
-            <form id="empDrawerForm" class="drawer-body">
-              <div id="drawerFields"></div>
+        <div
+          id="empModal"
+          class="modal-backdrop hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="empModalTitle"
+        >
+          <div class="modal-card modal-card--wide employee-modal">
+            <button type="button" id="empModalCloseBtn" class="modal-close material-symbols-rounded">close</button>
+            <h3 id="empModalTitle" class="modal-title">Add Employee</h3>
+            <form id="empModalForm" class="modal-body-scroll">
+              <div id="empModalFields" class="employee-modal__fields"></div>
             </form>
-            <div class="drawer-actions">
-              <button type="submit" form="empDrawerForm" class="md-button md-button--filled md-button--small">
+            <div class="modal-actions">
+              <button type="submit" form="empModalForm" class="md-button md-button--filled md-button--small">
                 <span class="material-symbols-rounded">save</span>
                 Save
               </button>
-              <button type="button" id="drawerCancelBtn" class="md-button md-button--outlined md-button--small">Cancel</button>
+              <button type="button" id="empModalCancelBtn" class="md-button md-button--outlined md-button--small">Cancel</button>
             </div>
           </div>
         </div>
