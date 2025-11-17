@@ -18,6 +18,7 @@ const {
   claimRequest: claimPairingRequest,
   getRequestById: getPairRequestById
 } = require('./pairingStore');
+const recruitmentOpenApiSpec = require('./api/recruitmentopenAI');
 
 const app = express();
 
@@ -1235,6 +1236,34 @@ const CANDIDATE_STATUSES = [
   'Hired'
 ];
 
+function buildPositionTitleMap(positions = []) {
+  return new Map(positions.map(pos => [String(pos.id), pos.title || null]));
+}
+
+function buildCandidateSummary(candidate, positionMap = new Map()) {
+  if (!candidate) return null;
+  const commentCount = Array.isArray(candidate.comments)
+    ? candidate.comments.length
+    : 0;
+
+  return {
+    id: candidate.id,
+    name: candidate.name || '',
+    contact: candidate.contact || '',
+    email: candidate.email || null,
+    status: candidate.status || null,
+    notes: candidate.notes || null,
+    positionId: candidate.positionId,
+    positionTitle: positionMap.get(String(candidate.positionId)) || null,
+    createdAt: candidate.createdAt,
+    updatedAt: candidate.updatedAt,
+    commentCount,
+    hasCv: Boolean(candidate.cv && candidate.cv.data),
+    cvFilename: candidate.cv?.filename || null,
+    cvContentType: candidate.cv?.contentType || null
+  };
+}
+
 function computePairRequestTtlSeconds() {
   const span = PAIR_REQUEST_TTL_MAX_SECONDS - PAIR_REQUEST_TTL_MIN_SECONDS;
   if (span <= 0) {
@@ -2089,6 +2118,133 @@ init().then(async () => {
   });
 
   // ========== RECRUITMENT PIPELINE ==========
+  app.post('/api/recruitment/roles', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.positions = db.data.positions || [];
+    const title = (req.body.title || '').trim();
+    const department = (req.body.department || '').trim();
+    const description = (req.body.description || '').trim();
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+    const id = Date.now();
+    const timestamp = new Date().toISOString();
+    const role = {
+      id,
+      title,
+      department,
+      description,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    db.data.positions.push(role);
+    await db.write();
+    res.status(201).json(role);
+  });
+
+  app.post('/api/recruitment/candidates', authRequired, managerOnly, async (req, res) => {
+    await db.read();
+    db.data.positions = db.data.positions || [];
+    db.data.candidates = db.data.candidates || [];
+    const resolvedRoleId = Number(req.body.roleId || req.body.positionId);
+    if (!resolvedRoleId || Number.isNaN(resolvedRoleId)) {
+      return res.status(400).json({ error: 'Valid role is required' });
+    }
+    const roleExists = db.data.positions.some(position => position.id == resolvedRoleId);
+    if (!roleExists) {
+      return res.status(404).json({ error: 'Role not found' });
+    }
+    const name = (req.body.name || '').trim();
+    const contact = (req.body.contact || '').trim();
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+    if (!contact) {
+      return res.status(400).json({ error: 'Contact is required' });
+    }
+    const email = (req.body.email || '').trim();
+    const notes = (req.body.notes || '').trim();
+    const status = CANDIDATE_STATUSES.includes(req.body.status)
+      ? req.body.status
+      : 'New';
+    const id = Date.now();
+    const timestamp = new Date().toISOString();
+    const candidate = {
+      id,
+      positionId: resolvedRoleId,
+      name,
+      contact,
+      email: email || null,
+      notes: notes || null,
+      status,
+      comments: [],
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    if (req.body.cv && req.body.cv.data && req.body.cv.filename) {
+      candidate.cv = {
+        filename: req.body.cv.filename,
+        contentType: req.body.cv.contentType || 'application/octet-stream',
+        data: req.body.cv.data
+      };
+    }
+    db.data.candidates.push(candidate);
+    await db.write();
+    const positionMap = buildPositionTitleMap(db.data.positions);
+    res.status(201).json(buildCandidateSummary(candidate, positionMap));
+  });
+
+  app.get(
+    '/api/recruitment/candidates/by-role',
+    authRequired,
+    managerOnly,
+    async (req, res) => {
+      await db.read();
+      db.data.positions = db.data.positions || [];
+      db.data.candidates = db.data.candidates || [];
+      const roleId = Number(req.query.roleId || req.query.positionId);
+      if (!roleId || Number.isNaN(roleId)) {
+        return res.status(400).json({ error: 'Role identifier is required' });
+      }
+      const roleExists = db.data.positions.some(position => position.id == roleId);
+      if (!roleExists) {
+        return res.status(404).json({ error: 'Role not found' });
+      }
+      const positionMap = buildPositionTitleMap(db.data.positions);
+      const result = db.data.candidates
+        .filter(candidate => candidate.positionId == roleId)
+        .map(candidate => buildCandidateSummary(candidate, positionMap));
+      res.json(result);
+    }
+  );
+
+  app.get(
+    '/api/recruitment/candidates/by-name',
+    authRequired,
+    managerOnly,
+    async (req, res) => {
+      await db.read();
+      db.data.positions = db.data.positions || [];
+      db.data.candidates = db.data.candidates || [];
+      const rawQuery = (req.query.name || req.query.q || '').toString().trim();
+      if (!rawQuery) {
+        return res.status(400).json({ error: 'Name query is required' });
+      }
+      const query = rawQuery.toLowerCase();
+      const positionMap = buildPositionTitleMap(db.data.positions);
+      const matches = db.data.candidates
+        .filter(candidate => (candidate.name || '').toLowerCase().includes(query))
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt || b.createdAt || 0) -
+            new Date(a.updatedAt || a.createdAt || 0)
+        )
+        .slice(0, 50)
+        .map(candidate => buildCandidateSummary(candidate, positionMap));
+      res.json(matches);
+    }
+  );
+
   app.get('/recruitment/positions', authRequired, managerOnly, async (req, res) => {
     await db.read();
     db.data.positions = db.data.positions || [];
@@ -4126,6 +4282,10 @@ init().then(async () => {
     res
       .type('application/json')
       .send(JSON.stringify(managementOpenApi, null, 2));
+  });
+
+  app.get('/api/recruitmentopenAI', authRequired, managerOnly, (req, res) => {
+    res.type('application/json').send(recruitmentOpenApiSpec);
   });
 
   app.get('/api/openapi', authRequired, (req, res) => {
