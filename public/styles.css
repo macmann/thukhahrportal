@@ -381,8 +381,40 @@
   align-self: flex-end;
 }
 
-.finance-table-wrapper {
-  overflow-x: auto;
+
+.finance-card-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.finance-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.finance-card-grid.is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.finance-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.finance-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
 }
 
 .finance-actions {
@@ -430,6 +462,16 @@
   display: block;
 }
 
+.finance-card-status {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .finance-salary-field {
   display: flex;
   flex-direction: column;
@@ -438,7 +480,24 @@
 
 .finance-salary-input {
   width: 100%;
-  max-width: 200px;
+}
+
+.finance-salary-input .material-symbols-rounded {
+  color: #475569;
+}
+
+.finance-card__body .md-label {
+  margin-bottom: 4px;
+  display: inline-block;
+}
+
+.finance-card .md-input-wrapper {
+  width: 100%;
+}
+
+.finance-card .md-input {
+  width: 100%;
+  min-width: 0;
 }
 
 .finance-salary-updated {
