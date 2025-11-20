@@ -429,10 +429,13 @@ const financeMonthInput = document.getElementById('financeMonth');
 const financeRefreshButton = document.getElementById('financeRefresh');
 const financeTableBody = document.getElementById('financeTableBody');
 const financeEmptyState = document.getElementById('financeEmptyState');
-const financeSaveAllButton = document.getElementById('financeSaveAll');
+const financeSearchInput = document.getElementById('financeSearchInput');
 let financeInitialized = false;
 let financeState = { month: '', employees: [] };
 let financeLoading = false;
+let financeSaving = false;
+let financeSavingId = null;
+let financeSearchTerm = '';
 
 function showToast(message, type = 'info') {
   if (!toastContainer) {
@@ -641,8 +644,15 @@ function setupFinanceModule() {
       loadFinanceData(true);
     });
   }
-  if (financeSaveAllButton) {
-    financeSaveAllButton.addEventListener('click', onFinanceSaveAllClick);
+  if (financeSearchInput) {
+    financeSearchInput.addEventListener('input', (event) => {
+      financeSearchTerm = (event?.target?.value || '').trim();
+      renderFinanceTable();
+    });
+  }
+  if (financeTableBody) {
+    financeTableBody.addEventListener('input', onFinanceSalaryInputChange);
+    financeTableBody.addEventListener('click', onFinanceSaveClick);
   }
 }
 
@@ -653,9 +663,6 @@ function setFinanceLoading(isLoading) {
   }
   if (financeMonthInput) {
     financeMonthInput.disabled = financeLoading;
-  }
-  if (financeSaveAllButton) {
-    financeSaveAllButton.disabled = financeLoading;
   }
   if (financeTableBody) {
     financeTableBody.classList.toggle('is-loading', financeLoading);
@@ -692,23 +699,24 @@ async function loadFinanceData(showFeedback = false) {
 function renderFinanceTable() {
   if (!financeTableBody) return;
   const employees = Array.isArray(financeState.employees) ? financeState.employees : [];
-  if (!employees.length) {
+  const normalizedSearch = (financeSearchTerm || '').toLowerCase();
+  const filteredEmployees = normalizedSearch
+    ? employees.filter(emp => (emp?.name || '').toLowerCase().includes(normalizedSearch))
+    : employees;
+
+  if (!filteredEmployees.length) {
     financeTableBody.innerHTML = '';
     if (financeEmptyState) financeEmptyState.classList.remove('hidden');
     return;
   }
 
-  const cards = employees
+  const cards = filteredEmployees
     .map(emp => {
       const salaryAmount = typeof emp?.salary?.amount === 'number' && Number.isFinite(emp.salary.amount)
         ? emp.salary.amount
         : null;
-      const displayAmount = salaryAmount === null ? 0 : salaryAmount;
-      const hasSavedSalary = salaryAmount !== null;
-      const inputValue = Number(displayAmount).toFixed(2);
-      const updatedText = hasSavedSalary
-        ? formatFinanceUpdatedAt(emp?.salary?.updatedAt)
-        : 'Defaulted to 0 until saved.';
+      const inputValue = salaryAmount === null ? '' : salaryAmount;
+      const updatedText = emp?.salary?.updatedAt ? formatFinanceUpdatedAt(emp.salary.updatedAt) : '';
       const jobLine = [emp?.title || '', emp?.department || '']
         .map(part => part && part.trim())
         .filter(Boolean)
@@ -716,35 +724,50 @@ function renderFinanceTable() {
       const nameDisplay = escapeHtml(emp?.name || 'Unknown');
       const jobDisplay = jobLine ? escapeHtml(jobLine) : '—';
       const employeeId = emp?.employeeId || '';
+      const isSavingThisEmployee = financeSaving && String(financeSavingId) === String(employeeId);
       const salaryFieldId = `finance-salary-${String(employeeId || '')
         .replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 8)}`;
       return `
-        <article class="finance-card" data-employee-id="${escapeHtml(employeeId)}">
-          <div class="finance-card__header">
-            <div>
-              <span class="finance-employee-name">${nameDisplay}</span>
-              <span class="finance-employee-meta">${jobDisplay}</span>
+        <div class="employee-card" data-employee-id="${escapeHtml(employeeId)}">
+          <div class="employee-card-header">
+            <div class="employee-info">
+              <div class="employee-name">${nameDisplay}</div>
+              <div class="employee-role">${jobDisplay}</div>
             </div>
-            <span class="finance-card-status">${hasSavedSalary ? 'Saved' : 'Not saved'}</span>
+            <button
+              class="employee-save-button"
+              data-save-employee
+              ${isSavingThisEmployee ? 'disabled' : ''}
+            >
+              ${isSavingThisEmployee ? 'Saving...' : 'Save'}
+            </button>
           </div>
-          <div class="finance-card__body">
-            <label class="md-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
-            <div class="finance-salary-field">
-              <div class="md-input-wrapper finance-salary-input">
-                <span class="material-symbols-rounded">payments</span>
-                <input class="md-input" id="${escapeHtml(salaryFieldId)}" type="number" min="0" step="0.01" value="${escapeHtml(inputValue)}" placeholder="0.00" data-salary-input>
-              </div>
-              <span class="finance-salary-updated">${escapeHtml(updatedText)}</span>
+
+          <div class="employee-card-body">
+            <label class="salary-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
+            <div class="salary-input-wrapper">
+              <span class="salary-icon">💳</span>
+              <input
+                type="number"
+                id="${escapeHtml(salaryFieldId)}"
+                value="${escapeHtml(String(inputValue))}"
+                placeholder="0"
+                data-salary-input
+                min="0"
+                step="0.01"
+              />
             </div>
+
+            ${updatedText ? `<div class="employee-updated">${escapeHtml(updatedText)}</div>` : ''}
           </div>
-        </article>
+        </div>
       `;
     })
     .join('');
 
   financeTableBody.innerHTML = cards;
   if (financeEmptyState) {
-    financeEmptyState.classList.toggle('hidden', employees.length > 0);
+    financeEmptyState.classList.toggle('hidden', filteredEmployees.length > 0);
   }
 }
 
@@ -777,77 +800,101 @@ function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
   };
 }
 
-function onFinanceSaveAllClick() {
+function onFinanceSalaryInputChange(event) {
+  const input = event.target.closest('[data-salary-input]');
+  if (!input) return;
+  const card = input.closest('[data-employee-id]');
+  const employeeId = card?.dataset?.employeeId;
+  if (!employeeId) return;
+  const rawValue = input.value;
+  const amount = rawValue === '' ? 0 : Number(rawValue);
+  if (!Number.isFinite(amount) || amount < 0) return;
+  updateFinanceSalaryDraft(employeeId, amount);
+}
+
+function onFinanceSaveClick(event) {
+  const button = event.target.closest('[data-save-employee]');
+  if (!button) return;
+  const card = button.closest('[data-employee-id]');
+  const employeeId = card?.dataset?.employeeId;
+  if (!employeeId) return;
+  saveFinanceSalaryForEmployee(employeeId, button);
+}
+
+function updateFinanceSalaryDraft(employeeId, amount) {
+  if (!financeState || !Array.isArray(financeState.employees)) return;
+  financeState.employees = financeState.employees.map(emp => {
+    if (String(emp.employeeId) !== String(employeeId)) return emp;
+    const baseSalary = typeof emp.salary === 'object' && emp.salary !== null
+      ? { ...emp.salary }
+      : { employeeId, month: financeState.month || getCurrentPayrollMonthValue(), amount: 0, updatedAt: null };
+    return {
+      ...emp,
+      salary: {
+        ...baseSalary,
+        amount
+      }
+    };
+  });
+}
+
+function setFinanceSavingState(isSaving, employeeId = null) {
+  financeSaving = Boolean(isSaving);
+  financeSavingId = isSaving ? employeeId : null;
+  renderFinanceTable();
+}
+
+async function saveFinanceSalaryForEmployee(employeeId, button) {
   if (!isSuperAdmin(currentUser)) {
     showToast('You do not have permission to update salaries.', 'error');
     return;
   }
-  if (!financeTableBody) return;
-  const rows = Array.from(financeTableBody.querySelectorAll('[data-employee-id]'));
-  if (!rows.length) {
-    showToast('There are no finance entries to save.', 'info');
-    return;
-  }
-
-  const updates = [];
-  for (const row of rows) {
-    const employeeId = row.dataset.employeeId;
-    if (!employeeId) continue;
-    const input = row.querySelector('[data-salary-input]');
-    if (!input) continue;
-    const rawValue = input.value.trim();
-    const normalizedValue = rawValue === '' ? '0' : rawValue;
-    const employeeName = row.querySelector('.finance-employee-name')?.textContent?.trim() || 'this employee';
-    const amount = Number(normalizedValue);
-    if (!Number.isFinite(amount) || amount < 0) {
-      showToast(`Salary for ${employeeName} must be a non-negative number.`, 'error');
-      input.focus();
-      return;
-    }
-    updates.push({ employeeId, amount });
-  }
-
-  if (!updates.length) {
-    showToast('No salary entries to save.', 'info');
-    return;
-  }
-
-  saveFinanceSalaries(financeSaveAllButton, updates);
-}
-
-async function saveFinanceSalaries(button, updates) {
   if (!financeMonthInput) return;
+  const employee = financeState.employees.find(emp => String(emp.employeeId) === String(employeeId));
+  if (!employee) {
+    showToast('Employee not found.', 'error');
+    return;
+  }
+
+  const amount = typeof employee?.salary?.amount === 'number' && Number.isFinite(employee.salary.amount)
+    ? employee.salary.amount
+    : 0;
+  if (amount < 0) {
+    showToast('Salary must be a non-negative number.', 'error');
+    return;
+  }
+
   const month = financeMonthInput.value || getCurrentPayrollMonthValue();
   financeMonthInput.value = month;
+  setFinanceSavingState(true, employeeId);
   if (button) {
     setButtonLoading(button, true);
   }
   try {
-    for (const { employeeId, amount } of updates) {
-      const res = await apiFetch('/api/finance/salaries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId, month, amount })
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to save salary for employee ${employeeId}`);
-      }
-      const data = await res.json();
-      financeState.month = data?.salary?.month || month;
-      if (financeMonthInput) {
-        financeMonthInput.value = financeState.month;
-      }
-      updateFinanceStateWithSalary(data?.salary, data?.employee);
+    const res = await apiFetch('/api/finance/salaries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId, month, amount })
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to save salary for employee ${employeeId}`);
     }
+    const data = await res.json();
+    financeState.month = data?.salary?.month || month;
+    if (financeMonthInput) {
+      financeMonthInput.value = financeState.month;
+    }
+    updateFinanceStateWithSalary(data?.salary, data?.employee);
     renderFinanceTable();
-    showToast('Monthly salaries saved.', 'success');
+    showToast('Salary saved.', 'success');
   } catch (error) {
-    console.error('Failed to save salaries', error);
-    showToast('Failed to save salaries. Please try again.', 'error');
+    console.error('Failed to save salary', error);
+    showToast('Failed to save salary. Please try again.', 'error');
   } finally {
     if (button) {
       setButtonLoading(button, false);
     }
+    setFinanceSavingState(false, null);
   }
 }
 
