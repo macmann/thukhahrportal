@@ -1070,18 +1070,21 @@
             Active Employees
           </div>
           <p class="card-subtitle">Enter the gross monthly salary for each employee and save your updates.</p>
+          <div class="employee-search">
+            <input
+              type="text"
+              id="financeSearchInput"
+              placeholder="Search employee by name..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
           <div class="finance-card-wrapper">
             <div id="financeTableBody" class="finance-card-grid"></div>
             <div id="financeEmptyState" class="finance-empty hidden">
               <span class="material-symbols-rounded">check_circle</span>
               <p>All active employees will appear here when available.</p>
             </div>
-          </div>
-          <div class="finance-actions">
-            <button id="financeSaveAll" class="md-button md-button--filled">
-              <span class="material-symbols-rounded">save</span>
-              Save All
-            </button>
           </div>
         </div>
       </section>
