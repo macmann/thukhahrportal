@@ -698,39 +698,51 @@ function renderFinanceTable() {
     return;
   }
 
-  const rows = employees
+  const cards = employees
     .map(emp => {
       const salaryAmount = typeof emp?.salary?.amount === 'number' && Number.isFinite(emp.salary.amount)
         ? emp.salary.amount
         : null;
-      const inputValue = salaryAmount === null ? '' : salaryAmount.toFixed(2);
-      const updatedText = formatFinanceUpdatedAt(emp?.salary?.updatedAt);
+      const displayAmount = salaryAmount === null ? 0 : salaryAmount;
+      const hasSavedSalary = salaryAmount !== null;
+      const inputValue = Number(displayAmount).toFixed(2);
+      const updatedText = hasSavedSalary
+        ? formatFinanceUpdatedAt(emp?.salary?.updatedAt)
+        : 'Defaulted to 0 until saved.';
       const jobLine = [emp?.title || '', emp?.department || '']
         .map(part => part && part.trim())
         .filter(Boolean)
         .join(' • ');
       const nameDisplay = escapeHtml(emp?.name || 'Unknown');
       const jobDisplay = jobLine ? escapeHtml(jobLine) : '—';
+      const employeeId = emp?.employeeId || '';
+      const salaryFieldId = `finance-salary-${String(employeeId || '')
+        .replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 8)}`;
       return `
-        <tr data-employee-id="${escapeHtml(emp.employeeId || '')}">
-          <td>
-            <span class="finance-employee-name">${nameDisplay}</span>
-          </td>
-          <td>
-            <span class="finance-employee-meta">${jobDisplay}</span>
-          </td>
-          <td>
+        <article class="finance-card" data-employee-id="${escapeHtml(employeeId)}">
+          <div class="finance-card__header">
+            <div>
+              <span class="finance-employee-name">${nameDisplay}</span>
+              <span class="finance-employee-meta">${jobDisplay}</span>
+            </div>
+            <span class="finance-card-status">${hasSavedSalary ? 'Saved' : 'Not saved'}</span>
+          </div>
+          <div class="finance-card__body">
+            <label class="md-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
             <div class="finance-salary-field">
-              <input class="md-input finance-salary-input" type="number" min="0" step="0.01" value="${escapeHtml(inputValue)}" placeholder="0.00" data-salary-input>
+              <div class="md-input-wrapper finance-salary-input">
+                <span class="material-symbols-rounded">payments</span>
+                <input class="md-input" id="${escapeHtml(salaryFieldId)}" type="number" min="0" step="0.01" value="${escapeHtml(inputValue)}" placeholder="0.00" data-salary-input>
+              </div>
               <span class="finance-salary-updated">${escapeHtml(updatedText)}</span>
             </div>
-          </td>
-        </tr>
+          </div>
+        </article>
       `;
     })
     .join('');
 
-  financeTableBody.innerHTML = rows;
+  financeTableBody.innerHTML = cards;
   if (financeEmptyState) {
     financeEmptyState.classList.toggle('hidden', employees.length > 0);
   }
@@ -771,7 +783,7 @@ function onFinanceSaveAllClick() {
     return;
   }
   if (!financeTableBody) return;
-  const rows = Array.from(financeTableBody.querySelectorAll('tr'));
+  const rows = Array.from(financeTableBody.querySelectorAll('[data-employee-id]'));
   if (!rows.length) {
     showToast('There are no finance entries to save.', 'info');
     return;
@@ -784,13 +796,9 @@ function onFinanceSaveAllClick() {
     const input = row.querySelector('[data-salary-input]');
     if (!input) continue;
     const rawValue = input.value.trim();
+    const normalizedValue = rawValue === '' ? '0' : rawValue;
     const employeeName = row.querySelector('.finance-employee-name')?.textContent?.trim() || 'this employee';
-    if (!rawValue) {
-      showToast(`Enter a salary amount for ${employeeName}.`, 'warning');
-      input.focus();
-      return;
-    }
-    const amount = Number(rawValue);
+    const amount = Number(normalizedValue);
     if (!Number.isFinite(amount) || amount < 0) {
       showToast(`Salary for ${employeeName} must be a non-negative number.`, 'error');
       input.focus();
