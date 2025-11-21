@@ -1064,38 +1064,32 @@
           <p class="card-subtitle">Select a month to review active employees and capture their monthly salary.</p>
         </div>
 
-        <section id="active-employees" class="mt-6">
-          <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
+        <section id="active-employees" class="active-employees-section">
+          <div class="active-employees-header">
             <div>
-              <h2 class="text-lg font-semibold text-slate-800">Active Employees</h2>
-              <p class="text-xs text-slate-500">
+              <h2 class="active-employees-title">Active Employees</h2>
+              <p class="active-employees-subtitle">
                 Enter the gross monthly salary for each employee and save your updates.
               </p>
             </div>
 
-            <div class="w-full sm:w-72">
-              <label for="employee-search" class="block text-[11px] font-medium text-slate-500 mb-1 uppercase tracking-wide">
+            <div class="employee-search-wrapper">
+              <label for="employee-search" class="employee-search-label">
                 Search Employee
               </label>
-              <div class="relative">
-                <span
-                  class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 text-sm"
-                >
-                  🔍
-                </span>
+              <div class="employee-search-input-wrapper">
+                <span class="employee-search-icon">🔍</span>
                 <input
                   id="employee-search"
                   type="text"
                   placeholder="Type a name..."
-                  class="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm
-                 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500
-                 focus:border-indigo-500"
+                  class="employee-search-input"
                 />
               </div>
             </div>
           </div>
 
-          <div id="employee-cards" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+          <div id="employee-cards" class="employee-cards"></div>
           <div
             id="financeEmptyState"
             class="hidden mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500"

@@ -437,6 +437,16 @@ let financeSaving = false;
 let financeSavingId = null;
 let financeSearchTerm = '';
 
+document.addEventListener('DOMContentLoaded', function () {
+  var searchInput = document.getElementById('employee-search');
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', function () {
+    financeSearchTerm = this.value.trim().toLowerCase();
+    applyFinanceSearchFilter();
+  });
+});
+
 function showToast(message, type = 'info') {
   if (!toastContainer) {
     window.alert(message);
@@ -644,12 +654,6 @@ function setupFinanceModule() {
       loadFinanceData(true);
     });
   }
-  if (financeSearchInput) {
-    financeSearchInput.addEventListener('input', (event) => {
-      financeSearchTerm = (event?.target?.value || '').trim().toLowerCase();
-      applyFinanceSearchFilter();
-    });
-  }
   if (financeTableBody) {
     financeTableBody.addEventListener('input', onFinanceSalaryInputChange);
     financeTableBody.addEventListener('click', onFinanceSaveClick);
@@ -730,44 +734,39 @@ function renderFinanceTable() {
         .replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 8)}`;
       return `
         <article
-          class="employee-card bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between gap-3"
+          class="employee-card"
           data-employee-id="${escapeHtml(employeeId)}"
           data-name="${escapeHtml((emp?.name || '').toLowerCase())}"
         >
-          <div class="flex items-start justify-between gap-3">
+          <div class="employee-card-top">
             <div>
-              <h3 class="employee-name text-sm font-semibold text-slate-900">${nameDisplay}</h3>
-              <p class="text-xs text-slate-500">${jobDisplay}</p>
+              <h3 class="employee-name">${nameDisplay}</h3>
+              <p class="employee-role">${jobDisplay}</p>
             </div>
-            <span class="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 mt-1"></span>
+            <span class="employee-status-dot"></span>
           </div>
 
-          <div class="flex items-end justify-between gap-3">
-            <div class="w-full">
-              <label class="block text-[11px] font-medium text-slate-500 mb-1 uppercase tracking-wide" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
-              <div
-                class="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5
-               focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/40"
-              >
-                <span class="text-amber-500 text-lg">💳</span>
+          <div class="employee-card-middle">
+            <div class="employee-salary-group">
+              <label class="employee-salary-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
+              <div class="employee-salary-input-wrapper">
+                <span class="employee-salary-icon">💳</span>
                 <input
                   type="number"
                   id="${escapeHtml(salaryFieldId)}"
-                  class="employee-salary-input w-full bg-transparent border-none outline-none text-sm text-slate-900"
+                  class="employee-salary-input"
                   value="${escapeHtml(String(inputValue))}"
                   data-salary-input
                   min="0"
                   step="0.01"
                 />
-                <span class="text-[11px] font-medium text-slate-500">MMK</span>
+                <span class="employee-salary-currency">MMK</span>
               </div>
             </div>
 
             <button
               type="button"
-              class="employee-save-button inline-flex items-center justify-center rounded-full bg-indigo-600 text-white
-             text-[11px] font-semibold px-3 py-1.5 shadow-sm hover:bg-indigo-700 active:bg-indigo-800
-             focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
+              class="employee-save-button"
               onclick="saveSalary('${escapeHtml(employeeId)}', this)"
               ${isSavingThisEmployee ? 'disabled' : ''}
             >
@@ -775,7 +774,7 @@ function renderFinanceTable() {
             </button>
           </div>
 
-          <p class="employee-updated text-[11px] text-slate-400">${escapeHtml(updatedText)}</p>
+          <p class="employee-updated">${escapeHtml(updatedText)}</p>
         </article>
       `;
     })
@@ -797,12 +796,9 @@ function applyFinanceSearchFilter() {
   cards.forEach(card => {
     const nameFromAttr = (card.getAttribute('data-name') || '').toLowerCase();
     const name = nameFromAttr || (card.querySelector('.employee-name')?.textContent || '').toLowerCase();
-    if (!normalizedTerm || name.includes(normalizedTerm)) {
-      card.classList.remove('hidden');
-      visibleCount += 1;
-    } else {
-      card.classList.add('hidden');
-    }
+    const isVisible = !normalizedTerm || name.includes(normalizedTerm);
+    card.style.display = isVisible ? '' : 'none';
+    if (isVisible) visibleCount += 1;
   });
 
   if (financeEmptyState) {
