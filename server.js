@@ -3241,9 +3241,230 @@ init().then(async () => {
     return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
   }
 
+  function isWorkingDay(date) {
+    const day = date.getDay();
+    return day >= 1 && day <= 5;
+  }
+
+  function countWorkingDaysInRange(startDate, endDate) {
+    if (!startDate || !endDate) return 0;
+    let count = 0;
+    const current = new Date(startDate.getTime());
+
+    while (current <= endDate) {
+      if (isWorkingDay(current)) count += 1;
+      current.setDate(current.getDate() + 1);
+    }
+
+    return count;
+  }
+
+  function getWorkingDaysInMonth(year, month /* 1-12 */) {
+    const first = new Date(year, month - 1, 1);
+    const last = new Date(year, month, 0);
+    return countWorkingDaysInRange(first, last);
+  }
+
+  const MONTH_LOOKUP = {
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    may: 4,
+    jun: 5,
+    jul: 6,
+    aug: 7,
+    sep: 8,
+    sept: 8,
+    oct: 9,
+    nov: 10,
+    dec: 11
+  };
+
+  function parseEmployeeDate(value) {
+    if (value === undefined || value === null) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+
+    const str = String(value).trim();
+    if (!str) return null;
+    const lowered = str.toLowerCase();
+    if (['current', 'present', 'n/a', 'na', 'yes', 'no'].includes(lowered)) return null;
+
+    const dashMatch = str.match(/^(\d{1,2})-([A-Za-z]{3,})-(\d{2,4})$/);
+    if (dashMatch) {
+      const day = Number(dashMatch[1]);
+      const monthKey = dashMatch[2].slice(0, 3).toLowerCase();
+      const monthIndex = MONTH_LOOKUP[monthKey];
+      const rawYear = Number(dashMatch[3]);
+      const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+      if (Number.isInteger(day) && Number.isInteger(monthIndex) && Number.isInteger(year)) {
+        const parsed = new Date(year, monthIndex, day);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+      }
+    }
+
+    const parsed = new Date(str);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  function getEmployeeDateValue(employee, keys = []) {
+    if (!employee || typeof employee !== 'object') return null;
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(employee, key)) {
+        const parsed = parseEmployeeDate(employee[key]);
+        if (parsed) return parsed;
+      }
+    }
+    return null;
+  }
+
+  function buildEmployeeDateContext(employee) {
+    const internshipStart = getEmployeeDateValue(employee, ['Start Date - Internship or Probation']);
+    const internshipEndDate = getEmployeeDateValue(employee, ['End Date - Internship or Probation']);
+    const fullTimeStartDate = getEmployeeDateValue(employee, ['Start Date - Full Time']);
+    const fullTimeEndDate = getEmployeeDateValue(employee, ['End Date - Full Time']);
+
+    const startDate = internshipStart || fullTimeStartDate || null;
+    const endDate = fullTimeEndDate || (!fullTimeStartDate && internshipEndDate ? internshipEndDate : null);
+
+    return {
+      startDate,
+      endDate,
+      internshipEndDate,
+      fullTimeStartDate
+    };
+  }
+
+  function calculateMonthlyPayForEmployee(employee, payrollYear, payrollMonth) {
+    const workingDaysInMonth = getWorkingDaysInMonth(payrollYear, payrollMonth);
+    if (!workingDaysInMonth) return 0;
+
+    const monthStart = new Date(payrollYear, payrollMonth - 1, 1);
+    const monthEnd = new Date(payrollYear, payrollMonth, 0);
+
+    const employeeStart = employee.startDate ? new Date(employee.startDate) : null;
+    const employeeEnd = employee.endDate ? new Date(employee.endDate) : null;
+
+    const activeStart = employeeStart && employeeStart > monthStart ? employeeStart : monthStart;
+    const activeEnd = employeeEnd && employeeEnd < monthEnd ? employeeEnd : monthEnd;
+
+    if (activeStart > activeEnd) return 0;
+
+    const internshipEndDate = employee.internshipEndDate ? new Date(employee.internshipEndDate) : null;
+    const fullTimeStartDate = employee.fullTimeStartDate ? new Date(employee.fullTimeStartDate) : null;
+
+    const hasInternshipSplitThisMonth =
+      internshipEndDate &&
+      fullTimeStartDate &&
+      internshipEndDate <= monthEnd &&
+      internshipEndDate >= monthStart &&
+      fullTimeStartDate <= monthEnd &&
+      fullTimeStartDate >= monthStart;
+
+    if (hasInternshipSplitThisMonth) {
+      const internSegmentStart = activeStart;
+      const internSegmentEnd = internshipEndDate < activeEnd ? internshipEndDate : activeEnd;
+
+      const fullSegmentStart = fullTimeStartDate > activeStart ? fullTimeStartDate : activeStart;
+      const fullSegmentEnd = activeEnd;
+
+      let totalPay = 0;
+
+      if (internSegmentStart <= internSegmentEnd) {
+        const internWorkingDays = countWorkingDaysInRange(internSegmentStart, internSegmentEnd);
+        const internMonthlySalary =
+          typeof employee.internshipMonthlySalary === 'number'
+          && Number.isFinite(employee.internshipMonthlySalary)
+            ? employee.internshipMonthlySalary
+            : 300000;
+        const internDailyRate = internMonthlySalary / workingDaysInMonth;
+        totalPay += internDailyRate * internWorkingDays;
+      }
+
+      if (fullSegmentStart <= fullSegmentEnd) {
+        const fullWorkingDays = countWorkingDaysInRange(fullSegmentStart, fullSegmentEnd);
+        const fullMonthlySalary = Number.isFinite(employee.monthlySalary) ? employee.monthlySalary : 0;
+        const fullDailyRate = fullMonthlySalary / workingDaysInMonth;
+        totalPay += fullDailyRate * fullWorkingDays;
+      }
+
+      return Math.round(totalPay);
+    }
+
+    const isFullTimeThisMonth = fullTimeStartDate && fullTimeStartDate <= activeEnd;
+    const monthlySalaryToUse = isFullTimeThisMonth
+      ? Number.isFinite(employee.monthlySalary) ? employee.monthlySalary : 0
+      : (Number.isFinite(employee.internshipMonthlySalary) ? employee.internshipMonthlySalary : 300000);
+
+    const segmentWorkingDays = countWorkingDaysInRange(activeStart, activeEnd);
+    const dailyRate = monthlySalaryToUse / workingDaysInMonth;
+    const pay = dailyRate * segmentWorkingDays;
+
+    return Math.round(pay);
+  }
+
   function currentPayrollMonth() {
     const now = new Date();
     return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  // Quick sanity checks (not executed automatically):
+  // - calculateMonthlyPayForEmployee({ startDate: new Date(2024, 4, 15), monthlySalary: 1000000 }, 2024, 5);
+  // - calculateMonthlyPayForEmployee({ startDate: new Date(2024, 4, 1), endDate: new Date(2024, 4, 20), monthlySalary: 1000000 }, 2024, 5);
+  // - calculateMonthlyPayForEmployee({ startDate: new Date(2024, 4, 1), internshipEndDate: new Date(2024, 4, 15), fullTimeStartDate: new Date(2024, 4, 16), monthlySalary: 1200000 }, 2024, 5);
+  // - calculateMonthlyPayForEmployee({ startDate: new Date(2024, 4, 1), internshipEndDate: new Date(2024, 3, 30), fullTimeStartDate: new Date(2024, 4, 1), monthlySalary: 1200000 }, 2024, 5);
+
+  function resolvePayrollYearMonth(monthValue) {
+    const normalized = normalizePayrollMonth(monthValue);
+    if (!normalized) return null;
+    const [yearStr, monthStr] = normalized.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+    return { year, month };
+  }
+
+  function pickSalaryRecord(records = [], targetMonth = null) {
+    if (!Array.isArray(records) || !records.length) return null;
+    const normalizedTarget = normalizePayrollMonth(targetMonth);
+    const sorted = [...records].sort((a, b) => {
+      const aTime = a?.updatedAt ? Date.parse(a.updatedAt) : -Infinity;
+      const bTime = b?.updatedAt ? Date.parse(b.updatedAt) : -Infinity;
+      return bTime - aTime;
+    });
+    if (normalizedTarget) {
+      const match = sorted.find(entry => normalizePayrollMonth(entry.month) === normalizedTarget);
+      if (match) return match;
+    }
+    return sorted[0];
+  }
+
+  function buildPayrollSummaryEntry(rawEmployee, employeeSummary, salaryRecord, payrollMonthValue) {
+    const payrollDate = resolvePayrollYearMonth(payrollMonthValue) || {};
+    const { year: payrollYear, month: payrollMonthNumber } = payrollDate;
+    const dateContext = buildEmployeeDateContext(rawEmployee || {});
+
+    const grossPay = payrollYear && payrollMonthNumber
+      ? calculateMonthlyPayForEmployee(
+          {
+            ...dateContext,
+            monthlySalary: Number.isFinite(salaryRecord?.amount) ? salaryRecord.amount : 0,
+            internshipMonthlySalary: rawEmployee?.internshipMonthlySalary
+          },
+          payrollYear,
+          payrollMonthNumber
+        )
+      : 0;
+
+    return {
+      employeeId: employeeSummary.employeeId,
+      name: employeeSummary.name || '',
+      month: payrollMonthValue,
+      salary: salaryRecord || null,
+      grossPay,
+      bankAccountName: employeeSummary.bankAccountName || '',
+      bankAccountNumber: employeeSummary.bankAccountNumber || ''
+    };
   }
 
   function resolveEmployeeScope(req, providedId) {
@@ -3976,31 +4197,26 @@ init().then(async () => {
     db.data.employees = Array.isArray(db.data.employees) ? db.data.employees : [];
     db.data.salaries = Array.isArray(db.data.salaries) ? db.data.salaries : [];
 
-    const salaryMap = new Map();
+    const salaryRecordsByEmployee = new Map();
     db.data.salaries.forEach(entry => {
       if (!entry) return;
       const employeeId = normalizeEmployeeId(entry.employeeId);
       if (!employeeId) return;
       const amount = Number(entry.amount);
       const normalizedAmount = Number.isFinite(amount) ? amount : null;
-      const entryUpdatedAt = entry.updatedAt ? Date.parse(entry.updatedAt) : 0;
-      const normalizedUpdatedAt = Number.isFinite(entryUpdatedAt) ? entryUpdatedAt : 0;
-      const existing = salaryMap.get(employeeId);
-      const existingUpdatedAt = existing?.updatedAt ? Date.parse(existing.updatedAt) : -Infinity;
-      const normalizedExistingUpdatedAt = Number.isFinite(existingUpdatedAt) ? existingUpdatedAt : -Infinity;
-
-      if (!existing || normalizedUpdatedAt >= normalizedExistingUpdatedAt) {
-        salaryMap.set(employeeId, {
-          employeeId,
-          month: normalizePayrollMonth(entry.month) || null,
-          amount: normalizedAmount,
-          currency: entry.currency || null,
-          updatedAt: entry.updatedAt || null
-        });
-      }
+      const record = {
+        employeeId,
+        month: normalizePayrollMonth(entry.month) || null,
+        amount: normalizedAmount,
+        currency: entry.currency || null,
+        updatedAt: entry.updatedAt || null
+      };
+      const records = salaryRecordsByEmployee.get(employeeId) || [];
+      records.push(record);
+      salaryRecordsByEmployee.set(employeeId, records);
     });
 
-    const employees = db.data.employees
+    const activeEmployees = db.data.employees
       .filter(emp => emp && isEmployeeActive(emp))
       .map(emp => {
         const employeeId = normalizeEmployeeId(emp.id);
@@ -4015,8 +4231,9 @@ init().then(async () => {
           'account name',
           'account holder'
         ]);
+        const salary = pickSalaryRecord(salaryRecordsByEmployee.get(employeeId) || [], month);
 
-        return {
+        const summary = {
           employeeId,
           name: emp.name || '',
           email: getEmpEmail(emp) || '',
@@ -4025,24 +4242,22 @@ init().then(async () => {
           status: emp.status || '',
           bankAccountName: bankAccountName || '',
           bankAccountNumber: bankAccountNumber || '',
-          salary: salaryMap.get(employeeId) || null
+          salary: salary || null
         };
+
+        return { summary, raw: emp, salary };
       })
       .filter(Boolean)
       .sort((a, b) => {
-        const nameA = (a?.name || '').toLowerCase();
-        const nameB = (b?.name || '').toLowerCase();
+        const nameA = (a?.summary?.name || '').toLowerCase();
+        const nameB = (b?.summary?.name || '').toLowerCase();
         return nameA.localeCompare(nameB);
       });
 
-    const payrollSummary = employees.map(emp => ({
-      employeeId: emp.employeeId,
-      name: emp.name || '',
-      month,
-      salary: emp.salary || null,
-      bankAccountName: emp.bankAccountName || '',
-      bankAccountNumber: emp.bankAccountNumber || ''
-    }));
+    const employees = activeEmployees.map(entry => entry.summary);
+    const payrollSummary = activeEmployees.map(entry =>
+      buildPayrollSummaryEntry(entry.raw, entry.summary, entry.salary, month)
+    );
 
     res.json({ month, employees, payrollSummary });
   });
@@ -4124,7 +4339,9 @@ init().then(async () => {
       bankAccountNumber: findValueByKeywords(employee, ['bank account number', 'account number', 'bank account']) || ''
     };
 
-    res.json({ salary: responseSalary, employee: employeeSummary });
+    const payrollEntry = buildPayrollSummaryEntry(employee, employeeSummary, responseSalary, month);
+
+    res.json({ salary: responseSalary, employee: employeeSummary, payroll: payrollEntry });
   });
 
   app.get('/api/openapi/user-info', authRequired, (req, res) => {
