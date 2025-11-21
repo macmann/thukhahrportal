@@ -236,6 +236,84 @@
       font-size: 11px;
       color: #9ca3af;
     }
+
+    /* Payroll Summary table – layout and styling */
+
+    .payroll-summary-container {
+      margin-top: 16px;
+    }
+
+    .payroll-summary-table-wrapper {
+      margin-top: 8px;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      background-color: #ffffff;
+      max-height: 480px;        /* table body scrolls when taller */
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+
+    .payroll-summary-table-wrapper::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    .payroll-summary-table-wrapper::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 999px;
+    }
+
+    .payroll-summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      color: #111827;
+      min-width: 600px;
+    }
+
+    .payroll-summary-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background-color: #f3f4f6;
+      text-align: left;
+      padding: 10px 12px;
+      font-weight: 600;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+
+    .payroll-summary-table tbody td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .payroll-summary-table tbody tr:nth-child(odd) {
+      background-color: #ffffff;
+    }
+
+    .payroll-summary-table tbody tr:nth-child(even) {
+      background-color: #f9fafb;
+    }
+
+    .payroll-summary-table tbody tr:hover {
+      background-color: #eef2ff;
+    }
+
+    /* Right-align salary column (2nd column) */
+    .payroll-summary-table tbody td:nth-child(2) {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Bank account columns – ellipsis if too long */
+    .payroll-summary-table tbody td:nth-child(3),
+    .payroll-summary-table tbody td:nth-child(4) {
+      max-width: 260px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body class="app-shell">
@@ -1328,37 +1406,39 @@
         </section>
 
         <section id="payrollSummarySection" class="payroll-summary-section">
-          <div class="payroll-summary-header">
-            <div>
-              <h2 class="payroll-summary-title">Payroll Summary</h2>
-              <p class="payroll-summary-subtitle">
-                Monthly payroll overview with salary and bank account details.
-              </p>
-            </div>
-            <div class="payroll-summary-actions">
-              <div class="payroll-summary-month">
-                <span class="material-symbols-rounded">calendar_month</span>
-                <span id="payrollSummaryMonth"></span>
+          <div class="payroll-summary-container">
+            <div class="payroll-summary-header">
+              <div>
+                <h2 class="payroll-summary-title">Payroll Summary</h2>
+                <p class="payroll-summary-subtitle">
+                  Monthly payroll overview with salary and bank account details.
+                </p>
               </div>
-              <button id="payrollExport" class="md-button md-button--filled md-button--small payroll-export-button">
-                <span class="material-symbols-rounded">file_download</span>
-                Export XLSX
-              </button>
+              <div class="payroll-summary-actions">
+                <div class="payroll-summary-month">
+                  <span class="material-symbols-rounded">calendar_month</span>
+                  <span id="payrollSummaryMonth"></span>
+                </div>
+                <button id="payrollExport" class="md-button md-button--filled md-button--small payroll-export-button">
+                  <span class="material-symbols-rounded">file_download</span>
+                  Export XLSX
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div class="payroll-table-wrapper">
-            <table class="payroll-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Salary (MMK)</th>
-                  <th>Bank Account Name</th>
-                  <th>Bank Account Number</th>
-                </tr>
-              </thead>
-              <tbody id="payrollSummaryBody"></tbody>
-            </table>
+            <div class="payroll-summary-table-wrapper payroll-table-wrapper">
+              <table class="payroll-summary-table payroll-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Salary (MMK)</th>
+                    <th>Bank Account Name</th>
+                    <th>Bank Account Number</th>
+                  </tr>
+                </thead>
+                <tbody id="payrollSummaryBody"></tbody>
+              </table>
+            </div>
             <div id="payrollSummaryEmpty" class="payroll-summary-empty hidden">
               Payroll summary will appear once salary data is available.
             </div>
