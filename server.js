@@ -3947,19 +3947,25 @@ init().then(async () => {
     const salaryMap = new Map();
     db.data.salaries.forEach(entry => {
       if (!entry) return;
-      const entryMonth = normalizePayrollMonth(entry.month);
-      if (!entryMonth || entryMonth !== month) return;
       const employeeId = normalizeEmployeeId(entry.employeeId);
       if (!employeeId) return;
       const amount = Number(entry.amount);
       const normalizedAmount = Number.isFinite(amount) ? amount : null;
-      salaryMap.set(employeeId, {
-        employeeId,
-        month,
-        amount: normalizedAmount,
-        currency: entry.currency || null,
-        updatedAt: entry.updatedAt || null
-      });
+      const entryUpdatedAt = entry.updatedAt ? Date.parse(entry.updatedAt) : 0;
+      const normalizedUpdatedAt = Number.isFinite(entryUpdatedAt) ? entryUpdatedAt : 0;
+      const existing = salaryMap.get(employeeId);
+      const existingUpdatedAt = existing?.updatedAt ? Date.parse(existing.updatedAt) : -Infinity;
+      const normalizedExistingUpdatedAt = Number.isFinite(existingUpdatedAt) ? existingUpdatedAt : -Infinity;
+
+      if (!existing || normalizedUpdatedAt >= normalizedExistingUpdatedAt) {
+        salaryMap.set(employeeId, {
+          employeeId,
+          month: normalizePayrollMonth(entry.month) || null,
+          amount: normalizedAmount,
+          currency: entry.currency || null,
+          updatedAt: entry.updatedAt || null
+        });
+      }
     });
 
     const employees = db.data.employees
@@ -3967,6 +3973,17 @@ init().then(async () => {
       .map(emp => {
         const employeeId = normalizeEmployeeId(emp.id);
         if (!employeeId) return null;
+        const bankAccountNumber = findValueByKeywords(emp, [
+          'bank account number',
+          'account number',
+          'bank account'
+        ]);
+        const bankAccountName = findValueByKeywords(emp, [
+          'bank account name',
+          'account name',
+          'account holder'
+        ]);
+
         return {
           employeeId,
           name: emp.name || '',
@@ -3974,6 +3991,8 @@ init().then(async () => {
           title: findValueByKeywords(emp, ['title', 'position']) || '',
           department: findValueByKeywords(emp, ['department', 'project']) || '',
           status: emp.status || '',
+          bankAccountName: bankAccountName || '',
+          bankAccountNumber: bankAccountNumber || '',
           salary: salaryMap.get(employeeId) || null
         };
       })
@@ -3984,7 +4003,16 @@ init().then(async () => {
         return nameA.localeCompare(nameB);
       });
 
-    res.json({ month, employees });
+    const payrollSummary = employees.map(emp => ({
+      employeeId: emp.employeeId,
+      name: emp.name || '',
+      month,
+      salary: emp.salary || null,
+      bankAccountName: emp.bankAccountName || '',
+      bankAccountNumber: emp.bankAccountNumber || ''
+    }));
+
+    res.json({ month, employees, payrollSummary });
   });
 
   app.post('/api/finance/salaries', authRequired, superadminOnly, async (req, res) => {
@@ -4059,7 +4087,9 @@ init().then(async () => {
       email: getEmpEmail(employee) || '',
       title: findValueByKeywords(employee, ['title', 'position']) || '',
       department: findValueByKeywords(employee, ['department', 'project']) || '',
-      status: employee?.status || ''
+      status: employee?.status || '',
+      bankAccountName: findValueByKeywords(employee, ['bank account name', 'account name', 'account holder']) || '',
+      bankAccountNumber: findValueByKeywords(employee, ['bank account number', 'account number', 'bank account']) || ''
     };
 
     res.json({ salary: responseSalary, employee: employeeSummary });
