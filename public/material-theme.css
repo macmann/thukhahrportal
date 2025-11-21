@@ -1512,6 +1512,18 @@ body {
   max-width: 220px;
 }
 
+.intern-flag-col,
+.intern-flag-cell {
+  text-align: center;
+  width: 110px;
+}
+
+.intern-flag-toggle {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
 .actions-col {
   right: 0;
   min-width: 160px;

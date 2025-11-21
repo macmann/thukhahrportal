@@ -731,6 +731,26 @@ function ensureLeaveBalances(emp) {
   return updated;
 }
 
+function normalizeBooleanFlag(value, defaultValue = false) {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return defaultValue;
+    return ['true', '1', 'yes', 'y', 'on'].includes(normalized);
+  }
+  return Boolean(value);
+}
+
+function ensureInternFlag(emp) {
+  if (!emp || typeof emp !== 'object') return false;
+  const normalized = normalizeBooleanFlag(emp.internFlag, false);
+  if (emp.internFlag !== normalized) {
+    emp.internFlag = normalized;
+    return true;
+  }
+  return false;
+}
+
 const PROFILE_SECTIONS = [
   {
     id: 'personal',
@@ -2007,8 +2027,17 @@ init().then(async () => {
   app.get('/employees', authRequired, async (req, res) => {
     await db.read();
     let emps = db.data.employees || [];
+    let internFlagUpdated = false;
+    emps.forEach(emp => {
+      if (ensureInternFlag(emp)) {
+        internFlagUpdated = true;
+      }
+    });
     if (!isManagerRole(req.user.role)) {
       emps = emps.filter(e => e.id == req.user.employeeId);
+    }
+    if (internFlagUpdated) {
+      await db.write();
     }
     res.json(emps);
   });
@@ -2025,6 +2054,7 @@ init().then(async () => {
     delete employee._id;
     assignEmployeeNumber(employee, db.data.employees);
     ensureLeaveBalances(employee);
+    ensureInternFlag(employee);
     normalizeEmployeeEmail(employee);
     const email = getEmpEmail(employee);
     if (!email) {
@@ -2066,6 +2096,7 @@ init().then(async () => {
         };
         delete emp._id;
         ensureLeaveBalances(emp);
+        ensureInternFlag(emp);
         normalizeEmployeeEmail(emp);
         db.data.employees.push(emp);
         upsertUserForEmployee(emp);
@@ -2087,6 +2118,7 @@ init().then(async () => {
     Object.assign(emp, updates);
     normalizeEmployeeEmail(emp);
     ensureLeaveBalances(emp);
+    ensureInternFlag(emp);
     upsertUserForEmployee(emp);
     await db.write();
     res.json(emp);
