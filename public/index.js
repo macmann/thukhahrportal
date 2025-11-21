@@ -427,9 +427,9 @@ const toastIcons = {
 
 const financeMonthInput = document.getElementById('financeMonth');
 const financeRefreshButton = document.getElementById('financeRefresh');
-const financeTableBody = document.getElementById('financeTableBody');
+const financeTableBody = document.getElementById('employee-cards');
 const financeEmptyState = document.getElementById('financeEmptyState');
-const financeSearchInput = document.getElementById('financeSearchInput');
+const financeSearchInput = document.getElementById('employee-search');
 let financeInitialized = false;
 let financeState = { month: '', employees: [] };
 let financeLoading = false;
@@ -614,9 +614,9 @@ function getCurrentPayrollMonthValue() {
 }
 
 function formatFinanceUpdatedAt(value) {
-  if (!value) return 'Not set';
+  if (!value) return 'Updated: Not set';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not set';
+  if (Number.isNaN(date.getTime())) return 'Updated: Not set';
   const datePart = date.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -626,7 +626,7 @@ function formatFinanceUpdatedAt(value) {
     hour: '2-digit',
     minute: '2-digit'
   });
-  return `Updated ${datePart} ${timePart}`;
+  return `Updated: ${datePart} ${timePart}`;
 }
 
 function setupFinanceModule() {
@@ -646,8 +646,8 @@ function setupFinanceModule() {
   }
   if (financeSearchInput) {
     financeSearchInput.addEventListener('input', (event) => {
-      financeSearchTerm = (event?.target?.value || '').trim();
-      renderFinanceTable();
+      financeSearchTerm = (event?.target?.value || '').trim().toLowerCase();
+      applyFinanceSearchFilter();
     });
   }
   if (financeTableBody) {
@@ -699,30 +699,25 @@ async function loadFinanceData(showFeedback = false) {
 function renderFinanceTable() {
   if (!financeTableBody) return;
   const employees = Array.isArray(financeState.employees) ? financeState.employees : [];
-  const normalizedSearch = (financeSearchTerm || '').toLowerCase();
-  const filteredEmployees = normalizedSearch
-    ? employees.filter(emp => (emp?.name || '').toLowerCase().includes(normalizedSearch))
-    : employees;
-
-  if (!filteredEmployees.length) {
+  if (!employees.length) {
     financeTableBody.innerHTML = '';
     if (financeEmptyState) {
       const emptyText = financeEmptyState.querySelector('p');
       if (emptyText) {
-        emptyText.textContent = normalizedSearch ? 'No employees found.' : 'All active employees will appear here when available.';
+        emptyText.textContent = 'All active employees will appear here when available.';
       }
       financeEmptyState.classList.remove('hidden');
     }
     return;
   }
 
-  const cards = filteredEmployees
+  const cards = employees
     .map(emp => {
       const salaryAmount = typeof emp?.salary?.amount === 'number' && Number.isFinite(emp.salary.amount)
         ? emp.salary.amount
         : null;
       const inputValue = salaryAmount === null ? '' : salaryAmount;
-      const updatedText = emp?.salary?.updatedAt ? formatFinanceUpdatedAt(emp.salary.updatedAt) : '';
+      const updatedText = emp?.salary?.updatedAt ? formatFinanceUpdatedAt(emp.salary.updatedAt) : 'Updated: Not set';
       const jobLine = [emp?.title || '', emp?.department || '']
         .map(part => part && part.trim())
         .filter(Boolean)
@@ -733,55 +728,95 @@ function renderFinanceTable() {
       const isSavingThisEmployee = financeSaving && String(financeSavingId) === String(employeeId);
       const salaryFieldId = `finance-salary-${String(employeeId || '')
         .replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 8)}`;
-      const saveIcon = isSavingThisEmployee
-        ? '<span class="loading-spinner" aria-hidden="true"></span>'
-        : '<span class="material-symbols-rounded" aria-hidden="true">check_circle</span>';
       return `
-        <div class="employee-card" data-employee-id="${escapeHtml(employeeId)}">
-          <div class="employee-card-header">
-            <div class="employee-info">
-              <div class="employee-name">${nameDisplay}</div>
-              <div class="employee-role">${jobDisplay}</div>
+        <article
+          class="employee-card bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between gap-3"
+          data-employee-id="${escapeHtml(employeeId)}"
+          data-name="${escapeHtml((emp?.name || '').toLowerCase())}"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="employee-name text-sm font-semibold text-slate-900">${nameDisplay}</h3>
+              <p class="text-xs text-slate-500">${jobDisplay}</p>
             </div>
-            <button
-              class="employee-save-button"
-              data-save-employee
-              aria-label="Save salary for ${nameDisplay}"
-              title="Save salary"
-              ${isSavingThisEmployee ? 'disabled' : ''}
-            >
-              ${saveIcon}
-            </button>
+            <span class="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 mt-1"></span>
           </div>
 
-          <div class="employee-card-body">
-            <div class="salary-field">
-              <label class="salary-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
-              <div class="salary-input-wrapper">
-                <span class="material-symbols-rounded salary-icon" aria-hidden="true">account_balance_wallet</span>
+          <div class="flex items-end justify-between gap-3">
+            <div class="w-full">
+              <label class="block text-[11px] font-medium text-slate-500 mb-1 uppercase tracking-wide" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
+              <div
+                class="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5
+               focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/40"
+              >
+                <span class="text-amber-500 text-lg">💳</span>
                 <input
                   type="number"
                   id="${escapeHtml(salaryFieldId)}"
+                  class="employee-salary-input w-full bg-transparent border-none outline-none text-sm text-slate-900"
                   value="${escapeHtml(String(inputValue))}"
-                  placeholder="0"
                   data-salary-input
                   min="0"
                   step="0.01"
                 />
-                <span class="salary-adornment" aria-hidden="true">MMK</span>
+                <span class="text-[11px] font-medium text-slate-500">MMK</span>
               </div>
             </div>
 
-            ${updatedText ? `<div class="employee-updated">${escapeHtml(updatedText)}</div>` : ''}
+            <button
+              type="button"
+              class="employee-save-button inline-flex items-center justify-center rounded-full bg-indigo-600 text-white
+             text-[11px] font-semibold px-3 py-1.5 shadow-sm hover:bg-indigo-700 active:bg-indigo-800
+             focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
+              onclick="saveSalary('${escapeHtml(employeeId)}', this)"
+              ${isSavingThisEmployee ? 'disabled' : ''}
+            >
+              ${isSavingThisEmployee ? 'Saving…' : '✓ Save'}
+            </button>
           </div>
-        </div>
+
+          <p class="employee-updated text-[11px] text-slate-400">${escapeHtml(updatedText)}</p>
+        </article>
       `;
     })
     .join('');
 
   financeTableBody.innerHTML = cards;
   if (financeEmptyState) {
-    financeEmptyState.classList.toggle('hidden', filteredEmployees.length > 0);
+    financeEmptyState.classList.add('hidden');
+  }
+  applyFinanceSearchFilter();
+}
+
+function applyFinanceSearchFilter() {
+  if (!financeTableBody) return;
+  const cards = Array.from(financeTableBody.querySelectorAll('.employee-card'));
+  const normalizedTerm = (financeSearchTerm || '').trim().toLowerCase();
+  let visibleCount = 0;
+
+  cards.forEach(card => {
+    const nameFromAttr = (card.getAttribute('data-name') || '').toLowerCase();
+    const name = nameFromAttr || (card.querySelector('.employee-name')?.textContent || '').toLowerCase();
+    if (!normalizedTerm || name.includes(normalizedTerm)) {
+      card.classList.remove('hidden');
+      visibleCount += 1;
+    } else {
+      card.classList.add('hidden');
+    }
+  });
+
+  if (financeEmptyState) {
+    const emptyText = financeEmptyState.querySelector('p');
+    const hasEmployees = cards.length > 0;
+    if (!hasEmployees) {
+      if (emptyText) emptyText.textContent = 'All active employees will appear here when available.';
+      financeEmptyState.classList.remove('hidden');
+    } else if (visibleCount === 0) {
+      if (emptyText) emptyText.textContent = 'No employees found.';
+      financeEmptyState.classList.remove('hidden');
+    } else {
+      financeEmptyState.classList.add('hidden');
+    }
   }
 }
 
@@ -833,6 +868,41 @@ function onFinanceSaveClick(event) {
   const employeeId = card?.dataset?.employeeId;
   if (!employeeId) return;
   saveFinanceSalaryForEmployee(employeeId, button);
+}
+
+function saveSalary(employeeId, buttonEl) {
+  if (!employeeId || !(buttonEl instanceof HTMLElement)) return;
+  const card = buttonEl.closest('.employee-card');
+  const input = card?.querySelector('.employee-salary-input');
+  const salary = Number(input?.value) || 0;
+  const updatedTextEl = card?.querySelector('.employee-updated');
+  const originalText = buttonEl.textContent;
+
+  buttonEl.disabled = true;
+  buttonEl.textContent = 'Saving…';
+
+  updateFinanceSalaryDraft(employeeId, salary);
+
+  saveFinanceSalaryForEmployee(employeeId, buttonEl)
+    .then(() => {
+      const refreshedCard = financeTableBody
+        ? Array.from(financeTableBody.querySelectorAll('.employee-card'))
+          .find(el => String(el.dataset.employeeId) === String(employeeId))
+        : card;
+      const targetUpdatedText = refreshedCard?.querySelector('.employee-updated') || updatedTextEl;
+      if (targetUpdatedText) {
+        targetUpdatedText.textContent = 'Updated: just now';
+      }
+    })
+    .finally(() => {
+      const refreshedButton = financeTableBody
+        ? Array.from(financeTableBody.querySelectorAll('.employee-card'))
+          .find(el => String(el.dataset.employeeId) === String(employeeId))?.querySelector('.employee-save-button')
+        : buttonEl;
+      const buttonToRestore = refreshedButton || buttonEl;
+      buttonToRestore.disabled = false;
+      buttonToRestore.textContent = originalText || '✓ Save';
+    });
 }
 
 function updateFinanceSalaryDraft(employeeId, amount) {
