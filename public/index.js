@@ -706,7 +706,13 @@ function renderFinanceTable() {
 
   if (!filteredEmployees.length) {
     financeTableBody.innerHTML = '';
-    if (financeEmptyState) financeEmptyState.classList.remove('hidden');
+    if (financeEmptyState) {
+      const emptyText = financeEmptyState.querySelector('p');
+      if (emptyText) {
+        emptyText.textContent = normalizedSearch ? 'No employees found.' : 'All active employees will appear here when available.';
+      }
+      financeEmptyState.classList.remove('hidden');
+    }
     return;
   }
 
@@ -727,6 +733,9 @@ function renderFinanceTable() {
       const isSavingThisEmployee = financeSaving && String(financeSavingId) === String(employeeId);
       const salaryFieldId = `finance-salary-${String(employeeId || '')
         .replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 8)}`;
+      const saveIcon = isSavingThisEmployee
+        ? '<span class="loading-spinner" aria-hidden="true"></span>'
+        : '<span class="material-symbols-rounded" aria-hidden="true">check_circle</span>';
       return `
         <div class="employee-card" data-employee-id="${escapeHtml(employeeId)}">
           <div class="employee-card-header">
@@ -737,25 +746,30 @@ function renderFinanceTable() {
             <button
               class="employee-save-button"
               data-save-employee
+              aria-label="Save salary for ${nameDisplay}"
+              title="Save salary"
               ${isSavingThisEmployee ? 'disabled' : ''}
             >
-              ${isSavingThisEmployee ? 'Saving...' : 'Save'}
+              ${saveIcon}
             </button>
           </div>
 
           <div class="employee-card-body">
-            <label class="salary-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
-            <div class="salary-input-wrapper">
-              <span class="salary-icon">💳</span>
-              <input
-                type="number"
-                id="${escapeHtml(salaryFieldId)}"
-                value="${escapeHtml(String(inputValue))}"
-                placeholder="0"
-                data-salary-input
-                min="0"
-                step="0.01"
-              />
+            <div class="salary-field">
+              <label class="salary-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
+              <div class="salary-input-wrapper">
+                <span class="material-symbols-rounded salary-icon" aria-hidden="true">account_balance_wallet</span>
+                <input
+                  type="number"
+                  id="${escapeHtml(salaryFieldId)}"
+                  value="${escapeHtml(String(inputValue))}"
+                  placeholder="0"
+                  data-salary-input
+                  min="0"
+                  step="0.01"
+                />
+                <span class="salary-adornment" aria-hidden="true">MMK</span>
+              </div>
             </div>
 
             ${updatedText ? `<div class="employee-updated">${escapeHtml(updatedText)}</div>` : ''}

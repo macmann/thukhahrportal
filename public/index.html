@@ -1071,13 +1071,17 @@
           </div>
           <p class="card-subtitle">Enter the gross monthly salary for each employee and save your updates.</p>
           <div class="employee-search">
-            <input
-              type="text"
-              id="financeSearchInput"
-              placeholder="Search employee by name..."
-              autocomplete="off"
-              spellcheck="false"
-            />
+            <label class="md-label" for="financeSearchInput">Search employee</label>
+            <div class="employee-search__field">
+              <span class="material-symbols-rounded" aria-hidden="true">search</span>
+              <input
+                type="text"
+                id="financeSearchInput"
+                placeholder="Type a name..."
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
           </div>
           <div class="finance-card-wrapper">
             <div id="financeTableBody" class="finance-card-grid"></div>

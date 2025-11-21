@@ -522,31 +522,56 @@
 
 .employee-search {
   margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
 }
 
-.employee-search input {
+.employee-search__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  max-width: 360px;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
   border: 1px solid #d0d7e2;
+  background: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.employee-search__field input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
   font-size: 14px;
+  color: #0f172a;
+}
+
+.employee-search__field .material-symbols-rounded {
+  color: #607d8b;
+  font-size: 20px;
 }
 
 .employee-card {
   background: #ffffff;
-  border-radius: 12px;
-  padding: 16px 20px;
+  border-radius: 16px;
+  padding: 16px 18px;
   margin-bottom: 12px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
   border: 1px solid #e5e9f2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 220px;
 }
 
 .employee-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  margin-bottom: 4px;
   gap: 12px;
 }
 
@@ -556,9 +581,9 @@
 }
 
 .employee-name {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 15px;
-  color: #111827;
+  color: #0f172a;
 }
 
 .employee-role {
@@ -567,23 +592,40 @@
 }
 
 .employee-save-button {
-  padding: 6px 14px;
-  border-radius: 999px;
+  width: 42px;
+  height: 42px;
+  padding: 6px;
+  border-radius: 12px;
   border: none;
-  font-size: 13px;
-  font-weight: 500;
   cursor: pointer;
-  background: #2563eb;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
   color: #ffffff;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2);
+}
+
+.employee-save-button .material-symbols-rounded {
+  font-size: 22px;
 }
 
 .employee-save-button:disabled {
-  opacity: 0.7;
+  opacity: 0.75;
   cursor: default;
+  box-shadow: none;
 }
 
 .employee-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  justify-content: space-between;
+}
+
+.salary-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -591,21 +633,25 @@
 
 .salary-label {
   font-size: 12px;
-  font-weight: 500;
-  color: #4b5563;
+  font-weight: 600;
+  color: #475569;
 }
 
 .salary-input-wrapper {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 6px;
-  border-radius: 10px;
+  gap: 8px;
+  border-radius: 12px;
   border: 1px solid #d1d5db;
-  padding: 6px 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .salary-icon {
-  font-size: 14px;
+  font-size: 18px;
+  color: #4b5563;
 }
 
 .salary-input-wrapper input {
@@ -613,11 +659,40 @@
   outline: none;
   width: 100%;
   font-size: 14px;
+  background: transparent;
+  color: #111827;
+}
+
+.salary-input-wrapper input:focus {
+  border: none;
+  outline: none;
+}
+
+.salary-adornment {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  background: #e2e8f0;
+  padding: 4px 8px;
+  border-radius: 8px;
 }
 
 .employee-updated {
   font-size: 11px;
   color: #9ca3af;
+}
+
+.loading-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .finance-empty.hidden {
