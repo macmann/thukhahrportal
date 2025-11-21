@@ -1273,7 +1273,7 @@
             <span class="material-symbols-rounded">account_balance</span>
             Finance
           </h2>
-          <p class="panel-subtitle">Manage monthly salary allocations for active employees.</p>
+          <p class="panel-subtitle">Manage salary records for active employees and review payroll by month.</p>
         </div>
 
         <div class="md-card finance-controls-card">
@@ -1290,7 +1290,7 @@
               Refresh
             </button>
           </div>
-          <p class="card-subtitle">Select a month to review active employees and capture their monthly salary.</p>
+          <p class="card-subtitle">Select a month to review payroll details. Salaries entered below apply across months.</p>
         </div>
 
         <section id="active-employees" class="active-employees-section">
@@ -1298,7 +1298,7 @@
             <div>
               <h2 class="active-employees-title">Active Employees</h2>
               <p class="active-employees-subtitle">
-                Enter the gross monthly salary for each employee and save your updates.
+                Enter the gross salary for each employee (applies to all months) and save your updates.
               </p>
             </div>
 
@@ -1324,6 +1324,38 @@
             class="hidden mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500"
           >
             <p>All active employees will appear here when available.</p>
+          </div>
+        </section>
+
+        <section id="payrollSummarySection" class="payroll-summary-section">
+          <div class="payroll-summary-header">
+            <div>
+              <h2 class="payroll-summary-title">Payroll Summary</h2>
+              <p class="payroll-summary-subtitle">
+                Monthly payroll overview with salary and bank account details.
+              </p>
+            </div>
+            <div class="payroll-summary-month">
+              <span class="material-symbols-rounded">calendar_month</span>
+              <span id="payrollSummaryMonth"></span>
+            </div>
+          </div>
+
+          <div class="payroll-summary-table-wrapper">
+            <table class="payroll-summary-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Salary (MMK)</th>
+                  <th>Bank Account Name</th>
+                  <th>Bank Account Number</th>
+                </tr>
+              </thead>
+              <tbody id="payrollSummaryBody"></tbody>
+            </table>
+            <div id="payrollSummaryEmpty" class="payroll-summary-empty hidden">
+              Payroll summary will appear once salary data is available.
+            </div>
           </div>
         </section>
       </section>

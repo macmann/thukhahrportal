@@ -926,3 +926,95 @@
   color: #9ca3af;
 }
 
+.payroll-summary-section {
+  margin-top: 32px;
+  padding: 20px;
+  border-radius: 16px;
+  background-color: #ffffff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e5e7eb;
+}
+
+.payroll-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.payroll-summary-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.payroll-summary-subtitle {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.payroll-summary-month {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 9999px;
+  background-color: #eef2ff;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.payroll-summary-table-wrapper {
+  margin-top: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #f9fafb;
+}
+
+.payroll-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 480px;
+}
+
+.payroll-summary-table th,
+.payroll-summary-table td {
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.payroll-summary-table th {
+  background-color: #eef2ff;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: 0.01em;
+}
+
+.payroll-summary-table tbody tr:nth-child(even) {
+  background-color: #ffffff;
+}
+
+.payroll-summary-table tbody tr:nth-child(odd) {
+  background-color: #f9fafb;
+}
+
+.payroll-summary-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.payroll-summary-empty {
+  padding: 16px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+  background-color: #ffffff;
+}
+

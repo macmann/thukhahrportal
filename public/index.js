@@ -430,8 +430,11 @@ const financeRefreshButton = document.getElementById('financeRefresh');
 const financeTableBody = document.getElementById('employee-cards');
 const financeEmptyState = document.getElementById('financeEmptyState');
 const financeSearchInput = document.getElementById('employee-search');
+const payrollSummaryBody = document.getElementById('payrollSummaryBody');
+const payrollSummaryMonth = document.getElementById('payrollSummaryMonth');
+const payrollSummaryEmpty = document.getElementById('payrollSummaryEmpty');
 let financeInitialized = false;
-let financeState = { month: '', employees: [] };
+let financeState = { month: '', employees: [], payrollSummary: [] };
 let financeLoading = false;
 let financeSaving = false;
 let financeSavingId = null;
@@ -639,6 +642,11 @@ function formatFinanceUpdatedAt(value) {
   return `Updated: ${datePart} ${timePart}`;
 }
 
+function formatSalaryAmount(amount) {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return '—';
+  return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function setupFinanceModule() {
   if (financeInitialized) return;
   if (!financeMonthInput || !financeTableBody) return;
@@ -685,10 +693,21 @@ async function loadFinanceData(showFeedback = false) {
     const data = await res.json();
     financeState.month = data.month || monthValue;
     financeState.employees = Array.isArray(data.employees) ? data.employees : [];
+    financeState.payrollSummary = Array.isArray(data.payrollSummary)
+      ? data.payrollSummary
+      : financeState.employees.map(emp => ({
+          employeeId: emp.employeeId,
+          name: emp.name || '',
+          month: financeState.month,
+          salary: emp.salary || null,
+          bankAccountName: emp.bankAccountName || '',
+          bankAccountNumber: emp.bankAccountNumber || ''
+        }));
     if (financeMonthInput) {
       financeMonthInput.value = financeState.month || monthValue;
     }
     renderFinanceTable();
+    renderPayrollSummary();
     if (showFeedback) {
       showToast('Finance data refreshed.', 'success');
     }
@@ -748,7 +767,7 @@ function renderFinanceTable() {
 
           <div class="employee-card-middle">
             <div class="employee-salary-group">
-              <label class="employee-salary-label" for="${escapeHtml(salaryFieldId)}">Monthly Salary</label>
+              <label class="employee-salary-label" for="${escapeHtml(salaryFieldId)}">Base Salary</label>
               <div class="employee-salary-input-wrapper">
                 <span class="employee-salary-icon">💳</span>
                 <input
@@ -787,6 +806,55 @@ function renderFinanceTable() {
   applyFinanceSearchFilter();
 }
 
+function renderPayrollSummary() {
+  if (!payrollSummaryBody) return;
+  const summaries = Array.isArray(financeState.payrollSummary)
+    ? financeState.payrollSummary
+    : [];
+
+  if (payrollSummaryMonth) {
+    payrollSummaryMonth.textContent = financeState.month || getCurrentPayrollMonthValue();
+  }
+
+  if (!summaries.length) {
+    payrollSummaryBody.innerHTML = '';
+    if (payrollSummaryEmpty) {
+      payrollSummaryEmpty.classList.remove('hidden');
+    }
+    return;
+  }
+
+  const rows = summaries
+    .map(summary => {
+      const salaryAmount =
+        typeof summary?.salary?.amount === 'number' && Number.isFinite(summary.salary.amount)
+          ? summary.salary.amount
+          : null;
+      const salaryDisplay = formatSalaryAmount(salaryAmount);
+      const bankName = summary?.bankAccountName?.trim()
+        ? summary.bankAccountName.trim()
+        : '—';
+      const bankNumber = summary?.bankAccountNumber?.trim()
+        ? summary.bankAccountNumber.trim()
+        : '—';
+
+      return `
+        <tr>
+          <td>${escapeHtml(summary?.name || 'Unknown')}</td>
+          <td class="payroll-summary-amount">${escapeHtml(salaryDisplay)}</td>
+          <td>${escapeHtml(bankName)}</td>
+          <td>${escapeHtml(bankNumber)}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  payrollSummaryBody.innerHTML = rows;
+  if (payrollSummaryEmpty) {
+    payrollSummaryEmpty.classList.add('hidden');
+  }
+}
+
 function applyFinanceSearchFilter() {
   if (!financeTableBody) return;
   const cards = Array.from(financeTableBody.querySelectorAll('.employee-card'));
@@ -816,6 +884,50 @@ function applyFinanceSearchFilter() {
   }
 }
 
+function updatePayrollSummaryState(salaryPayload = {}, employeeInfo = null) {
+  if (!financeState || !Array.isArray(financeState.payrollSummary)) return;
+  const normalizedId = salaryPayload?.employeeId || employeeInfo?.employeeId;
+  const employeeId = normalizedId ? String(normalizedId) : null;
+  if (!employeeId) return;
+
+  const amount = typeof salaryPayload.amount === 'number' && Number.isFinite(salaryPayload.amount)
+    ? salaryPayload.amount
+    : null;
+  const salary = {
+    employeeId,
+    month: salaryPayload.month || financeState.month,
+    amount,
+    currency: salaryPayload.currency || null,
+    updatedAt: salaryPayload.updatedAt || new Date().toISOString()
+  };
+
+  const employeeFromList = Array.isArray(financeState.employees)
+    ? financeState.employees.find(emp => String(emp.employeeId) === employeeId)
+    : null;
+  const existingSummary = financeState.payrollSummary.find(summary => String(summary.employeeId) === employeeId) || {};
+  const summary = {
+    employeeId,
+    name: employeeInfo?.name || existingSummary.name || employeeFromList?.name || '',
+    month: salary.month,
+    salary,
+    bankAccountName: employeeInfo?.bankAccountName
+      || employeeFromList?.bankAccountName
+      || existingSummary.bankAccountName
+      || '',
+    bankAccountNumber: employeeInfo?.bankAccountNumber
+      || employeeFromList?.bankAccountNumber
+      || existingSummary.bankAccountNumber
+      || ''
+  };
+
+  const index = financeState.payrollSummary.findIndex(summary => String(summary.employeeId) === employeeId);
+  if (index === -1) {
+    financeState.payrollSummary.push(summary);
+  } else {
+    financeState.payrollSummary[index] = summary;
+  }
+}
+
 function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
   if (!financeState || !Array.isArray(financeState.employees)) return;
   const normalizedId = salaryPayload?.employeeId || employeeInfo?.employeeId;
@@ -833,7 +945,9 @@ function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
       email: employeeInfo.email ?? existing.email,
       title: employeeInfo.title ?? existing.title,
       department: employeeInfo.department ?? existing.department,
-      status: employeeInfo.status ?? existing.status
+      status: employeeInfo.status ?? existing.status,
+      bankAccountName: employeeInfo.bankAccountName ?? existing.bankAccountName,
+      bankAccountNumber: employeeInfo.bankAccountNumber ?? existing.bankAccountNumber
     } : {}),
     salary: {
       employeeId: normalizedId,
@@ -843,6 +957,8 @@ function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
       updatedAt: salaryPayload.updatedAt || new Date().toISOString()
     }
   };
+
+  updatePayrollSummaryState(salaryPayload, { ...employeeInfo, employeeId: normalizedId });
 }
 
 function onFinanceSalaryInputChange(event) {
@@ -966,6 +1082,7 @@ async function saveFinanceSalaryForEmployee(employeeId, button) {
     }
     updateFinanceStateWithSalary(data?.salary, data?.employee);
     renderFinanceTable();
+    renderPayrollSummary();
     showToast('Salary saved.', 'success');
   } catch (error) {
     console.error('Failed to save salary', error);
