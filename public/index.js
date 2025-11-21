@@ -700,6 +700,9 @@ async function loadFinanceData(showFeedback = false) {
           name: emp.name || '',
           month: financeState.month,
           salary: emp.salary || null,
+          grossPay: typeof emp?.salary?.amount === 'number' && Number.isFinite(emp.salary.amount)
+            ? emp.salary.amount
+            : null,
           bankAccountName: emp.bankAccountName || '',
           bankAccountNumber: emp.bankAccountNumber || ''
         }));
@@ -826,11 +829,14 @@ function renderPayrollSummary() {
 
   const rows = summaries
     .map(summary => {
-      const salaryAmount =
-        typeof summary?.salary?.amount === 'number' && Number.isFinite(summary.salary.amount)
-          ? summary.salary.amount
-          : null;
-      const salaryDisplay = formatSalaryAmount(salaryAmount);
+    const grossPay = typeof summary?.grossPay === 'number' && Number.isFinite(summary.grossPay)
+      ? summary.grossPay
+      : null;
+    const salaryAmount =
+      typeof summary?.salary?.amount === 'number' && Number.isFinite(summary.salary.amount)
+        ? summary.salary.amount
+        : null;
+    const salaryDisplay = formatSalaryAmount(grossPay !== null ? grossPay : salaryAmount);
       const bankName = summary?.bankAccountName?.trim()
         ? summary.bankAccountName.trim()
         : '—';
@@ -886,20 +892,31 @@ function applyFinanceSearchFilter() {
 
 function updatePayrollSummaryState(salaryPayload = {}, employeeInfo = null) {
   if (!financeState || !Array.isArray(financeState.payrollSummary)) return;
-  const normalizedId = salaryPayload?.employeeId || employeeInfo?.employeeId;
+  const normalizedId = salaryPayload?.employeeId
+    || salaryPayload?.salary?.employeeId
+    || employeeInfo?.employeeId;
   const employeeId = normalizedId ? String(normalizedId) : null;
   if (!employeeId) return;
 
+  const grossPay = typeof salaryPayload.grossPay === 'number' && Number.isFinite(salaryPayload.grossPay)
+    ? salaryPayload.grossPay
+    : typeof salaryPayload?.salary?.grossPay === 'number' && Number.isFinite(salaryPayload.salary.grossPay)
+      ? salaryPayload.salary.grossPay
+      : null;
   const amount = typeof salaryPayload.amount === 'number' && Number.isFinite(salaryPayload.amount)
     ? salaryPayload.amount
-    : null;
-  const salary = {
-    employeeId,
-    month: salaryPayload.month || financeState.month,
-    amount,
-    currency: salaryPayload.currency || null,
-    updatedAt: salaryPayload.updatedAt || new Date().toISOString()
-  };
+    : typeof salaryPayload?.salary?.amount === 'number' && Number.isFinite(salaryPayload.salary.amount)
+      ? salaryPayload.salary.amount
+      : null;
+  const salary = salaryPayload.salary && typeof salaryPayload.salary === 'object'
+    ? { ...salaryPayload.salary }
+    : {
+        employeeId,
+        month: salaryPayload.month || financeState.month,
+        amount,
+        currency: salaryPayload.currency || null,
+        updatedAt: salaryPayload.updatedAt || new Date().toISOString()
+      };
 
   const employeeFromList = Array.isArray(financeState.employees)
     ? financeState.employees.find(emp => String(emp.employeeId) === employeeId)
@@ -917,7 +934,8 @@ function updatePayrollSummaryState(salaryPayload = {}, employeeInfo = null) {
     bankAccountNumber: employeeInfo?.bankAccountNumber
       || employeeFromList?.bankAccountNumber
       || existingSummary.bankAccountNumber
-      || ''
+      || '',
+    grossPay: grossPay !== null ? grossPay : existingSummary.grossPay || null
   };
 
   const index = financeState.payrollSummary.findIndex(summary => String(summary.employeeId) === employeeId);
@@ -928,7 +946,7 @@ function updatePayrollSummaryState(salaryPayload = {}, employeeInfo = null) {
   }
 }
 
-function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
+function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null, payrollPayload = null) {
   if (!financeState || !Array.isArray(financeState.employees)) return;
   const normalizedId = salaryPayload?.employeeId || employeeInfo?.employeeId;
   if (!normalizedId) return;
@@ -958,7 +976,7 @@ function updateFinanceStateWithSalary(salaryPayload = {}, employeeInfo = null) {
     }
   };
 
-  updatePayrollSummaryState(salaryPayload, { ...employeeInfo, employeeId: normalizedId });
+  updatePayrollSummaryState(payrollPayload || salaryPayload, { ...employeeInfo, employeeId: normalizedId });
 }
 
 function onFinanceSalaryInputChange(event) {
@@ -1076,11 +1094,11 @@ async function saveFinanceSalaryForEmployee(employeeId, button) {
       throw new Error(`Failed to save salary for employee ${employeeId}`);
     }
     const data = await res.json();
-    financeState.month = data?.salary?.month || month;
+    financeState.month = data?.payroll?.month || data?.salary?.month || month;
     if (financeMonthInput) {
       financeMonthInput.value = financeState.month;
     }
-    updateFinanceStateWithSalary(data?.salary, data?.employee);
+    updateFinanceStateWithSalary(data?.salary, data?.employee, data?.payroll);
     renderFinanceTable();
     renderPayrollSummary();
     showToast('Salary saved.', 'success');
