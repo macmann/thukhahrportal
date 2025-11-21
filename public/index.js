@@ -30,6 +30,16 @@ function isSuperAdmin(roleOrUser) {
   return normalizeRole(role) === 'superadmin';
 }
 
+function normalizeInternFlag(value) {
+  if (value === undefined || value === null || value === '') return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    return ['true', '1', 'yes', 'y', 'on'].includes(normalized);
+  }
+  return Boolean(value);
+}
+
 function updateChatWidgetUser(employeeId) {
   const iframe = document.getElementById('chatWidgetIframe');
   if (!iframe || typeof URL !== 'function') return;
@@ -3589,6 +3599,7 @@ async function init() {
   showPanel(defaultPanel);
 
   document.getElementById('empTableBody').addEventListener('click', onEmpTableClick);
+  document.getElementById('empTableBody').addEventListener('change', onInternFlagChange);
 
   const emailForm = document.getElementById('emailSettingsForm');
   if (emailForm) emailForm.addEventListener('submit', onEmailSettingsSubmit);
@@ -4291,7 +4302,16 @@ window.cancelApp = async function(appId) {
 
 async function loadEmployeesManage() {
   const emps = await getJSON('/employees');
-  const activeCount = emps.filter(e => {
+  const employees = Array.isArray(emps) ? emps : [];
+  const internFlagKey = employees.length
+    ? Object.keys(employees[0]).find(k => k.toLowerCase() === 'internflag') || 'internFlag'
+    : 'internFlag';
+  const internFlagKeyNormalized = internFlagKey.toLowerCase();
+  const normalizedEmps = employees.map(emp => ({
+    ...emp,
+    [internFlagKey]: normalizeInternFlag(emp ? emp[internFlagKey] : false)
+  }));
+  const activeCount = normalizedEmps.filter(e => {
     const statusKey = Object.keys(e).find(k => k.toLowerCase() === 'status');
     return e[statusKey] === 'active';
   }).length;
@@ -4306,28 +4326,30 @@ async function loadEmployeesManage() {
   if (searchInput && searchInput.value !== empSearchTerm) {
     searchInput.value = empSearchTerm;
   }
-  if (!emps.length) {
+  if (!normalizedEmps.length) {
     head.innerHTML = '<tr><th style="padding:16px;">No data</th></tr>';
     return;
   }
 
-  let noKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'no');
-  let nameKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'name');
-  let statusKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'status');
-  let roleKey = Object.keys(emps[0]).find(k => k.toLowerCase() === 'role');
+  const sampleEmployee = normalizedEmps[0];
+  let noKey = Object.keys(sampleEmployee).find(k => k.toLowerCase() === 'no');
+  let nameKey = Object.keys(sampleEmployee).find(k => k.toLowerCase() === 'name');
+  let statusKey = Object.keys(sampleEmployee).find(k => k.toLowerCase() === 'status');
+  let roleKey = Object.keys(sampleEmployee).find(k => k.toLowerCase() === 'role');
   // Exclude id, name, status, leaveBalances, no from dynamic keys
-  let keys = Object.keys(emps[0]).filter(
+  let keys = Object.keys(sampleEmployee).filter(
     k =>
       k !== 'id' &&
       k.toLowerCase() !== 'name' &&
       k.toLowerCase() !== 'status' &&
       k.toLowerCase() !== 'leavebalances' &&
-      k.toLowerCase() !== 'no'
+      k.toLowerCase() !== 'no' &&
+      k.toLowerCase() !== internFlagKeyNormalized
   );
 
   const searchValue = empSearchTerm.trim().toLowerCase();
 
-  const filtered = emps.filter(emp => {
+  const filtered = normalizedEmps.filter(emp => {
     if (!searchValue) return true;
     return Object.entries(emp).some(([key, value]) => {
       if (key.toLowerCase() === 'id') return false;
@@ -4361,16 +4383,19 @@ async function loadEmployeesManage() {
     `<th class="sticky-col no-col">No</th>` +
     `<th class="sticky-col name-col">Name</th>` +
     `<th>Status</th>` +
+    `<th class="intern-flag-col">Intern</th>` +
     keys.map(k => `<th>${k.charAt(0).toUpperCase() + k.slice(1)}</th>`).join('') +
     `<th class="sticky-col actions-col">Actions</th>` +
     '</tr>';
 
   if (!filtered.length) {
-    body.innerHTML = `<tr><td class="table-empty" colspan="${keys.length + 4}">No employees match your search.</td></tr>`;
+    body.innerHTML = `<tr><td class="table-empty" colspan="${keys.length + 5}">No employees match your search.</td></tr>`;
     return;
   }
 
   filtered.forEach((emp, idx) => {
+    const internFlagId = `intern-flag-${String(emp.id ?? idx)}`;
+    const internChecked = normalizeInternFlag(emp[internFlagKey]);
     body.innerHTML += `<tr>
       <td class="sticky-col no-col">${emp[noKey] ?? idx + 1}</td>
       <td class="sticky-col name-col">${emp[nameKey] ?? ''}</td>
@@ -4378,6 +4403,16 @@ async function loadEmployeesManage() {
         <span class="status-pill ${emp[statusKey] === 'active' ? 'status-pill--active' : 'status-pill--inactive'}">
           ${emp[statusKey]}
         </span>
+      </td>
+      <td class="intern-flag-cell">
+        <input
+          type="checkbox"
+          id="${escapeHtml(internFlagId)}"
+          class="intern-flag-toggle"
+          data-employee-id="${escapeHtml(String(emp.id ?? ''))}"
+          aria-label="Toggle intern flag for ${escapeHtml(emp[nameKey] ?? 'employee')}"
+          ${internChecked ? 'checked' : ''}
+        >
       </td>
       ${keys.map(k => `<td>${typeof emp[k] === 'object' ? JSON.stringify(emp[k]) : (emp[k] ?? '')}</td>`).join('')}
       <td class="sticky-col actions-col">
@@ -4400,6 +4435,34 @@ window.openEditEmployee = async function(empId) {
   const fields = await getDynamicEmployeeFields();
   openEmpDrawer({title: 'Edit Employee', fields, initial: emp});
 };
+
+async function onInternFlagChange(event) {
+  const checkbox = event.target.closest('.intern-flag-toggle');
+  if (!checkbox) return;
+  const employeeId = checkbox.dataset.employeeId;
+  if (!employeeId) return;
+
+  const isIntern = checkbox.checked;
+  checkbox.disabled = true;
+
+  try {
+    const res = await apiFetch(`/employees/${employeeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ internFlag: isIntern })
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to update intern flag for employee ${employeeId}`);
+    }
+    showToast(`Intern flag ${isIntern ? 'enabled' : 'disabled'} for this employee.`, 'success');
+  } catch (err) {
+    console.error(err);
+    checkbox.checked = !isIntern;
+    showToast('Unable to update intern flag. Please try again.', 'error');
+  } finally {
+    checkbox.disabled = false;
+  }
+}
 
 // Table actions (toggle, delete)
 async function onEmpTableClick(e) {
