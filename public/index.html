@@ -1064,33 +1064,45 @@
           <p class="card-subtitle">Select a month to review active employees and capture their monthly salary.</p>
         </div>
 
-        <div class="md-card">
-          <div class="card-title">
-            <span class="material-symbols-rounded">group</span>
-            Active Employees
-          </div>
-          <p class="card-subtitle">Enter the gross monthly salary for each employee and save your updates.</p>
-          <div class="employee-search">
-            <label class="md-label" for="financeSearchInput">Search employee</label>
-            <div class="employee-search__field">
-              <span class="material-symbols-rounded" aria-hidden="true">search</span>
-              <input
-                type="text"
-                id="financeSearchInput"
-                placeholder="Type a name..."
-                autocomplete="off"
-                spellcheck="false"
-              />
+        <section id="active-employees" class="mt-6">
+          <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-lg font-semibold text-slate-800">Active Employees</h2>
+              <p class="text-xs text-slate-500">
+                Enter the gross monthly salary for each employee and save your updates.
+              </p>
+            </div>
+
+            <div class="w-full sm:w-72">
+              <label for="employee-search" class="block text-[11px] font-medium text-slate-500 mb-1 uppercase tracking-wide">
+                Search Employee
+              </label>
+              <div class="relative">
+                <span
+                  class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 text-sm"
+                >
+                  🔍
+                </span>
+                <input
+                  id="employee-search"
+                  type="text"
+                  placeholder="Type a name..."
+                  class="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm
+                 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500
+                 focus:border-indigo-500"
+                />
+              </div>
             </div>
           </div>
-          <div class="finance-card-wrapper">
-            <div id="financeTableBody" class="finance-card-grid"></div>
-            <div id="financeEmptyState" class="finance-empty hidden">
-              <span class="material-symbols-rounded">check_circle</span>
-              <p>All active employees will appear here when available.</p>
-            </div>
+
+          <div id="employee-cards" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+          <div
+            id="financeEmptyState"
+            class="hidden mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500"
+          >
+            <p>All active employees will appear here when available.</p>
           </div>
-        </div>
+        </section>
       </section>
     </main>
   </div>
