@@ -443,6 +443,7 @@ const financeSearchInput = document.getElementById('employee-search');
 const payrollSummaryBody = document.getElementById('payrollSummaryBody');
 const payrollSummaryMonth = document.getElementById('payrollSummaryMonth');
 const payrollSummaryEmpty = document.getElementById('payrollSummaryEmpty');
+const payrollExportButton = document.getElementById('payrollExport');
 let financeInitialized = false;
 let financeState = { month: '', employees: [], payrollSummary: [] };
 let financeLoading = false;
@@ -657,6 +658,18 @@ function formatSalaryAmount(amount) {
   return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function getPayrollSalaryAmount(summary) {
+  const grossPay = typeof summary?.grossPay === 'number' && Number.isFinite(summary.grossPay)
+    ? summary.grossPay
+    : null;
+  const salaryAmount = typeof summary?.salary?.amount === 'number' && Number.isFinite(summary.salary.amount)
+    ? summary.salary.amount
+    : null;
+  if (grossPay !== null) return grossPay;
+  if (salaryAmount !== null) return salaryAmount;
+  return null;
+}
+
 function setupFinanceModule() {
   if (financeInitialized) return;
   if (!financeMonthInput || !financeTableBody) return;
@@ -671,6 +684,9 @@ function setupFinanceModule() {
       if (!isSuperAdmin(currentUser)) return;
       loadFinanceData(true);
     });
+  }
+  if (payrollExportButton) {
+    payrollExportButton.addEventListener('click', exportPayrollToXlsx);
   }
   if (financeTableBody) {
     financeTableBody.addEventListener('input', onFinanceSalaryInputChange);
@@ -839,14 +855,7 @@ function renderPayrollSummary() {
 
   const rows = summaries
     .map(summary => {
-    const grossPay = typeof summary?.grossPay === 'number' && Number.isFinite(summary.grossPay)
-      ? summary.grossPay
-      : null;
-    const salaryAmount =
-      typeof summary?.salary?.amount === 'number' && Number.isFinite(summary.salary.amount)
-        ? summary.salary.amount
-        : null;
-    const salaryDisplay = formatSalaryAmount(grossPay !== null ? grossPay : salaryAmount);
+      const salaryDisplay = formatSalaryAmount(getPayrollSalaryAmount(summary));
       const bankName = summary?.bankAccountName?.trim()
         ? summary.bankAccountName.trim()
         : '—';
@@ -869,6 +878,54 @@ function renderPayrollSummary() {
   if (payrollSummaryEmpty) {
     payrollSummaryEmpty.classList.add('hidden');
   }
+}
+
+function exportPayrollToXlsx() {
+  if (!isSuperAdmin(currentUser)) return;
+  const summaries = Array.isArray(financeState.payrollSummary)
+    ? financeState.payrollSummary
+    : [];
+  if (!summaries.length) {
+    showToast('Payroll summary is empty for the selected month.', 'warning');
+    return;
+  }
+  if (typeof XLSX === 'undefined' || !XLSX.utils) {
+    showToast('Export tool is unavailable. Please refresh and try again.', 'error');
+    return;
+  }
+
+  const month = financeState.month || getCurrentPayrollMonthValue();
+  const headerRows = [
+    ['Payroll Summary'],
+    ['Month', month],
+    ['Generated', new Date().toLocaleString()],
+    []
+  ];
+
+  const tableRows = [
+    ['Employee', 'Salary (MMK)', 'Bank Account Name', 'Bank Account Number'],
+    ...summaries.map(summary => [
+      summary?.name || 'Unknown',
+      getPayrollSalaryAmount(summary) ?? '',
+      summary?.bankAccountName?.trim() || '',
+      summary?.bankAccountNumber?.trim() || ''
+    ])
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet([...headerRows, ...tableRows]);
+  worksheet['!cols'] = [
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 26 },
+    { wch: 22 }
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Payroll');
+
+  const fileName = `payroll-${String(month || 'month').replace(/\s+/g, '-')}.xlsx`;
+  XLSX.writeFile(workbook, fileName);
+  showToast('Payroll exported successfully.', 'success');
 }
 
 function applyFinanceSearchFilter() {
