@@ -1335,9 +1335,15 @@
                 Monthly payroll overview with salary and bank account details.
               </p>
             </div>
-            <div class="payroll-summary-month">
-              <span class="material-symbols-rounded">calendar_month</span>
-              <span id="payrollSummaryMonth"></span>
+            <div class="payroll-summary-actions">
+              <div class="payroll-summary-month">
+                <span class="material-symbols-rounded">calendar_month</span>
+                <span id="payrollSummaryMonth"></span>
+              </div>
+              <button id="payrollExport" class="md-button md-button--filled md-button--small payroll-export-button">
+                <span class="material-symbols-rounded">file_download</span>
+                Export XLSX
+              </button>
             </div>
           </div>
 
@@ -1373,6 +1379,7 @@
       }
     }
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha256-DqnjmPNtI6D3NiAub4dkAAfkBpocQUTzM0hjtCqYLgA=" crossorigin="anonymous"></script>
   <script src="index.js"></script>
   
 <iframe
