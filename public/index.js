@@ -889,12 +889,31 @@ function exportPayrollToXlsx() {
     showToast('Payroll summary is empty for the selected month.', 'warning');
     return;
   }
-  if (typeof XLSX === 'undefined' || !XLSX.utils) {
-    showToast('Export tool is unavailable. Please refresh and try again.', 'error');
+  const month = financeState.month || getCurrentPayrollMonthValue();
+  const rows = buildPayrollExportRows(summaries, month);
+
+  if (typeof XLSX !== 'undefined' && XLSX.utils) {
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 26 },
+      { wch: 22 }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Payroll');
+
+    const fileName = `payroll-${String(month || 'month').replace(/\s+/g, '-')}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+    showToast('Payroll exported successfully.', 'success');
     return;
   }
 
-  const month = financeState.month || getCurrentPayrollMonthValue();
+  downloadPayrollCsv(rows, month);
+}
+
+function buildPayrollExportRows(summaries = [], month = '') {
   const headerRows = [
     ['Payroll Summary'],
     ['Month', month],
@@ -912,20 +931,43 @@ function exportPayrollToXlsx() {
     ])
   ];
 
-  const worksheet = XLSX.utils.aoa_to_sheet([...headerRows, ...tableRows]);
-  worksheet['!cols'] = [
-    { wch: 28 },
-    { wch: 16 },
-    { wch: 26 },
-    { wch: 22 }
-  ];
+  return [...headerRows, ...tableRows];
+}
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Payroll');
+function downloadPayrollCsv(rows = [], month = '') {
+  if (!Array.isArray(rows) || !rows.length) return;
 
-  const fileName = `payroll-${String(month || 'month').replace(/\s+/g, '-')}.xlsx`;
-  XLSX.writeFile(workbook, fileName);
-  showToast('Payroll exported successfully.', 'success');
+  const csvContent = rows
+    .map(row =>
+      row
+        .map(value => {
+          if (value === null || value === undefined) return '';
+          const stringValue = String(value);
+          if (/[",\n]/.test(stringValue)) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        })
+        .join(',')
+    )
+    .join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const fileName = `payroll-${String(month || 'month').replace(/\s+/g, '-')}.csv`;
+  if (window.navigator.msSaveOrOpenBlob) {
+    window.navigator.msSaveOrOpenBlob(blob, fileName);
+  } else {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  showToast('Payroll CSV exported successfully.', 'success');
 }
 
 function applyFinanceSearchFilter() {
